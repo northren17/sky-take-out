@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -57,4 +58,56 @@ public  Result  delete(@RequestParam List<Long> ids)
     dishService.deleteBatch(ids);
     return Result.success();
 }
+/*
+菜品查询回显：菜品表和口味表
+ */
+    @GetMapping("/{id}")
+    @ApiOperation("查询菜品")
+public  Result<DishVO>  getById(@PathVariable Long id)
+{
+    log.info("查询菜品,{}", id);
+   DishVO dishVO= dishService.getByIdWithFlavor(id);
+   return Result.success(dishVO);
+}
+/*
+修改菜品
+ */
+    @PutMapping
+    @ApiOperation("修改菜品")
+    public Result update(@RequestBody DishDTO dishDTO)
+    {    log.info("修改菜品：{}",dishDTO.getName());
+        dishService.updateWithFlavor(dishDTO);
+        return Result.success();
+    }
+    /**
+     * 根据分类条件查询列出菜品
+     * @param categoryId 分类id
+     * @return 菜品列表
+     */
+    @GetMapping("/list")
+    @ApiOperation("根据分类条件查询并列出菜品")
+    public Result<List<Dish>> list(Long categoryId) {
+        log.info("根据分类条件查询并列出菜品: {}", categoryId);
+        List<Dish> dishList = dishService.list(categoryId);
+        return Result.success(dishList);
+    }
+    /**
+     * 菜品起售停售
+     * 路径：/admin/dish/status/{status}
+     * 参数：status (0/1), 请求体 id
+     */
+    @PostMapping("/status/{status}")
+    @ApiOperation("菜品起售停售")
+    public Result startOrStop(@PathVariable Integer status,Long id) {
+
+
+        log.info("菜品起售停售：{}, id:{}", status, id);
+
+        // 调用Service层处理业务逻辑
+        dishService.startOrStop(status, id);
+
+        return Result.success();
+    }
+
+    // 注意：实际项目中可能需要批量启停，逻辑类似，这里展示单个启停
 }
