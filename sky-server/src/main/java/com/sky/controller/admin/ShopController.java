@@ -16,7 +16,7 @@ public class ShopController {
     public static final String KEY = "SHOP_STATUS";
 @Autowired
 private RedisTemplate redisTemplate;
-@PostMapping("/{status}")
+@PutMapping ("/{status}")
 @ApiOperation("设置店铺营业状态")
 /**
  * 设置营业
