@@ -46,11 +46,11 @@ public class JwtUtil {
      * @return
      */
     public static Claims parseJWT(String secretKey, String token) {
-        // 得到DefaultJwtParser
+         /*得到DefaultJwtParser                 // 设置签名的秘钥secretKey：这是你的原始密钥字符串。
+        .getBytes(...)：这是转换方法。
+        StandardCharsets.UTF_8：这是翻译的标准（编码格式）。*/
         Claims claims = Jwts.parser()
-                // 设置签名的秘钥
                 .setSigningKey(secretKey.getBytes(StandardCharsets.UTF_8))
-                // 设置需要解析的jwt
                 .parseClaimsJws(token).getBody();
         return claims;
     }
