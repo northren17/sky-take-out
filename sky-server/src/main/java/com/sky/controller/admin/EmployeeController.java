@@ -1,6 +1,5 @@
 package com.sky.controller.admin;
 
-import com.github.pagehelper.PageInfo;
 import com.sky.constant.JwtClaimsConstant;
 import com.sky.dto.EmployeeDTO;
 import com.sky.dto.EmployeeLoginDTO;
@@ -24,11 +23,10 @@ import java.util.Map;
 /**
  * 员工管理
  */
-
 @RestController
 @RequestMapping("/admin/employee")
-@Api(tags="员工相关接口")
 @Slf4j
+@Api(tags = "员工相关接口")
 public class EmployeeController {
 
     @Autowired
@@ -43,7 +41,7 @@ public class EmployeeController {
      * @return
      */
     @PostMapping("/login")
-    @ApiOperation("员工登录")
+    @ApiOperation(value = "员工登录")
     public Result<EmployeeLoginVO> login(@RequestBody EmployeeLoginDTO employeeLoginDTO) {
         log.info("员工登录：{}", employeeLoginDTO);
 
@@ -77,37 +75,47 @@ public class EmployeeController {
     public Result<String> logout() {
         return Result.success();
     }
+
     /**
      * 新增员工
+     * @param employeeDTO
+     * @return
      */
     @PostMapping
     @ApiOperation("新增员工")
-    public Result save (@RequestBody EmployeeDTO employeeDTO)
-    {
-    log.info("新增员工:{}",employeeDTO);
+    public Result save(@RequestBody EmployeeDTO employeeDTO){
+        log.info("新增员工：{}",employeeDTO);
         employeeService.save(employeeDTO);
         return Result.success();
     }
-    /*
-分页查询
- */
+
+    /**
+     * 员工分页查询
+     * @param employeePageQueryDTO
+     * @return
+     */
     @GetMapping("/page")
-    @ApiOperation("分页查询")
-    public Result <PageResult> page(EmployeePageQueryDTO employeePageQueryDTO){
+    @ApiOperation("员工分页查询")
+    public Result<PageResult> page(EmployeePageQueryDTO employeePageQueryDTO){
         log.info("员工分页查询，参数为：{}", employeePageQueryDTO);
-        PageResult pageResult=employeeService.pageQuery(employeePageQueryDTO);
+        PageResult pageResult = employeeService.pageQuery(employeePageQueryDTO);
         return Result.success(pageResult);
     }
-    /*
-    禁用账号
+
+    /**
+     * 启用禁用员工账号
+     * @param status
+     * @param id
+     * @return
      */
-@PostMapping("/status/{status}")
-@ApiOperation("员工状态")
+    @PostMapping("/status/{status}")
+    @ApiOperation("启用禁用员工账号")
     public Result startOrStop(@PathVariable Integer status,Long id){
-    log.info("启用禁用员工账号：{},{}",status,id);
-    employeeService.startOrStop(status,id);
-    return Result.success();
-}
+        log.info("启用禁用员工账号：{},{}",status,id);
+        employeeService.startOrStop(status,id);
+        return Result.success();
+    }
+
     /**
      * 根据id查询员工信息
      * @param id
@@ -119,17 +127,17 @@ public class EmployeeController {
         Employee employee = employeeService.getById(id);
         return Result.success(employee);
     }
-/**
- * 编辑员工信息
- * @param employeeDTO
- * @return
- */
-@PutMapping
-@ApiOperation("编辑员工")
+
+    /**
+     * 编辑员工信息
+     * @param employeeDTO
+     * @return
+     */
+    @PutMapping
+    @ApiOperation("编辑员工信息")
     public Result update(@RequestBody EmployeeDTO employeeDTO){
         log.info("编辑员工信息：{}", employeeDTO);
         employeeService.update(employeeDTO);
         return Result.success();
     }
 }
-

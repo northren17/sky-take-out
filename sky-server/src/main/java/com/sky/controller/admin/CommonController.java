@@ -1,6 +1,5 @@
 package com.sky.controller.admin;
 
-
 import com.sky.constant.MessageConstant;
 import com.sky.result.Result;
 import com.sky.utils.AliOssUtil;
@@ -16,17 +15,26 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.util.UUID;
 
+/**
+ * 通用接口
+ */
 @RestController
 @RequestMapping("/admin/common")
 @Api(tags = "通用接口")
 @Slf4j
 public class CommonController {
+
     @Autowired
     private AliOssUtil aliOssUtil;
-    @ApiOperation("文件上传")
+
+    /**
+     * 文件上传
+     * @param file
+     * @return
+     */
     @PostMapping("/upload")
-    public Result<String> update (MultipartFile file)
-    {
+    @ApiOperation("文件上传")
+    public Result<String> upload(MultipartFile file){
         log.info("文件上传：{}",file);
 
         try {
