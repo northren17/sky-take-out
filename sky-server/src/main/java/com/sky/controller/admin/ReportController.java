@@ -1,4 +1,4 @@
-/*
+
 package com.sky.controller.admin;
 
 import com.sky.result.Result;
@@ -19,10 +19,10 @@ import org.springframework.web.bind.annotation.RestController;
 import javax.servlet.http.HttpServletResponse;
 import java.time.LocalDate;
 
-*/
+
 /**
  * 数据统计相关接口
- *//*
+ */
 
 @RestController
 @RequestMapping("/admin/report")
@@ -33,13 +33,13 @@ public class ReportController {
     @Autowired
     private ReportService reportService;
 
-    */
+
 /**
      * 营业额统计
      * @param begin
      * @param end
      * @return
-     *//*
+     */
 
     @GetMapping("/turnoverStatistics")
     @ApiOperation("营业额统计")
@@ -50,13 +50,13 @@ public class ReportController {
         return Result.success(reportService.getTurnoverStatistics(begin,end));
     }
 
-    */
+
 /**
      * 用户统计
      * @param begin
      * @param end
      * @return
-     *//*
+     */
 
     @GetMapping("/userStatistics")
     @ApiOperation("用户统计")
@@ -67,14 +67,12 @@ public class ReportController {
         return Result.success(reportService.getUserStatistics(begin,end));
     }
 
-    */
 /**
      * 订单统计
      * @param begin
      * @param end
      * @return
-     *//*
-
+     */
     @GetMapping("/ordersStatistics")
     @ApiOperation("订单统计")
     public Result<OrderReportVO> ordersStatistics(
@@ -84,13 +82,13 @@ public class ReportController {
         return Result.success(reportService.getOrderStatistics(begin,end));
     }
 
-    */
+
 /**
      * 销量排名top10
      * @param begin
      * @param end
      * @return
-     *//*
+     */
 
     @GetMapping("/top10")
     @ApiOperation("销量排名top10")
@@ -101,11 +99,11 @@ public class ReportController {
         return Result.success(reportService.getSalesTop10(begin,end));
     }
 
-    */
+
 /**
      * 导出运营数据报表
      * @param response
-     *//*
+     */
 
     @GetMapping("/export")
     @ApiOperation("导出运营数据报表")
@@ -113,4 +111,4 @@ public class ReportController {
         reportService.exportBusinessData(response);
     }
 }
-*/
+
