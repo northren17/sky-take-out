@@ -23,8 +23,9 @@ public class OrderTask {
 
     /**
      * 处理支付超时订单
+     * 已改用 RabbitMQ 延迟队列实现，此定时任务作为兜底或停用
      */
-    @Scheduled(cron = "0 * * * * ?")
+    //@Scheduled(cron = "0 * * * * ?")
     public void processTimeoutOrder(){
         log.info("处理支付超时订单：{}", new Date());
 

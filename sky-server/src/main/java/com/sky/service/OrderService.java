@@ -7,6 +7,8 @@ import com.sky.vo.OrderStatisticsVO;
 import com.sky.vo.OrderSubmitVO;
 import com.sky.vo.OrderVO;
 
+import java.math.BigDecimal;
+
 public interface OrderService {
 
     /**
@@ -27,6 +29,9 @@ public interface OrderService {
      * @param outTradeNo
      */
     void paySuccess(String outTradeNo);
+    void refundNotification(String outRefundNo, String outTradeNo, BigDecimal refundAmount,
+                            boolean success, String notificationBody);
+    void timeoutCancel(Long orderId);
     /**
      * 用户端订单分页查询
      * @param page
@@ -41,11 +46,13 @@ public interface OrderService {
      * @return
      */
     OrderVO details(Long id);
+    OrderVO detailsForUser(Long id);
     /**
      * 用户取消订单
      * @param id
      */
     void userCancelById(Long id) throws Exception;
+    void adminCancelById(Long id) throws Exception;
     /**
      * 再来一单
      *

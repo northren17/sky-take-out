@@ -5,17 +5,19 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.sky.properties.WeChatProperties;
 import com.sky.service.OrderService;
+import com.sky.utils.WeChatNotificationVerifier;
 import com.wechat.pay.contrib.apache.httpclient.util.AesUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.http.entity.ContentType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.BufferedReader;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import org.springframework.util.StringUtils;
 
 /**
  * 支付回调相关接口
@@ -28,6 +30,8 @@ public class PayNotifyController {
     private OrderService orderService;
     @Autowired
     private WeChatProperties weChatProperties;
+    @Autowired
+    private WeChatNotificationVerifier notificationVerifier;
 
     /**
      * 支付成功回调
@@ -38,6 +42,7 @@ public class PayNotifyController {
     public void paySuccessNotify(HttpServletRequest request, HttpServletResponse response) throws Exception {
         //读取数据
         String body = readData(request);
+        notificationVerifier.verify(request, body);
         log.info("支付成功回调：{}", body);
 
         //数据解密
@@ -47,6 +52,10 @@ public class PayNotifyController {
         JSONObject jsonObject = JSON.parseObject(plainText);
         String outTradeNo = jsonObject.getString("out_trade_no");//商户平台订单号
         String transactionId = jsonObject.getString("transaction_id");//微信支付交易号
+        if (!StringUtils.hasText(outTradeNo) || !StringUtils.hasText(transactionId) ||
+                !"SUCCESS".equals(jsonObject.getString("trade_state"))) {
+            throw new IllegalArgumentException("微信支付通知状态或业务字段无效");
+        }
 
         log.info("商户平台订单号：{}", outTradeNo);
         log.info("微信支付交易号：{}", transactionId);
@@ -55,6 +64,34 @@ public class PayNotifyController {
         orderService.paySuccess(outTradeNo);
 
         //给微信响应
+        responseToWeixin(response);
+    }
+
+    @RequestMapping("/refundSuccess")
+    public void refundSuccessNotify(HttpServletRequest request, HttpServletResponse response) throws Exception {
+        String body = readData(request);
+        notificationVerifier.verify(request, body);
+        String plainText = decryptData(body);
+        JSONObject notification = JSON.parseObject(plainText);
+        String outRefundNo = notification.getString("out_refund_no");
+        String outTradeNo = notification.getString("out_trade_no");
+        String refundStatus = notification.getString("refund_status");
+        JSONObject amount = notification.getJSONObject("amount");
+        if (!StringUtils.hasText(outRefundNo) || !StringUtils.hasText(outTradeNo) ||
+                !StringUtils.hasText(refundStatus) || amount == null || amount.getLong("refund") == null) {
+            throw new IllegalArgumentException("微信退款通知缺少业务字段");
+        }
+        if ("PROCESSING".equals(refundStatus)) {
+            responseToWeixin(response);
+            return;
+        }
+        if (!"SUCCESS".equals(refundStatus) && !"CLOSED".equals(refundStatus) &&
+                !"ABNORMAL".equals(refundStatus)) {
+            throw new IllegalArgumentException("微信退款通知状态无效");
+        }
+        orderService.refundNotification(outRefundNo, outTradeNo,
+                java.math.BigDecimal.valueOf(amount.getLongValue("refund"), 2),
+                "SUCCESS".equals(refundStatus), plainText);
         responseToWeixin(response);
     }
 
@@ -91,6 +128,7 @@ public class PayNotifyController {
         String ciphertext = resource.getString("ciphertext");
         String nonce = resource.getString("nonce");
         String associatedData = resource.getString("associated_data");
+        if (associatedData == null) associatedData = "";
 
         AesUtil aesUtil = new AesUtil(weChatProperties.getApiV3Key().getBytes(StandardCharsets.UTF_8));
         //密文解密

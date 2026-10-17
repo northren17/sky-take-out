@@ -6,7 +6,6 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Data
@@ -19,8 +18,23 @@ public class User implements Serializable {
 
     private Long id;
 
-    //微信用户唯一标识
+    /**
+     * 微信用户唯一标识
+     * <p>
+     * 说明：网页版注册/账号密码登录复用该字段存放登录账号（用户名），
+     * 微信小程序登录时存放真实 openid，两者语义由 {@code username} 区分。
+     */
     private String openid;
+
+    /**
+     * 登录账号（网页版注册时写入，与 openid 列取同一个值；微信登录用户为 null）
+     */
+    private String username;
+
+    /**
+     * 登录密码（BCrypt 加密后的密文，形如 $2a$10$...；微信登录用户为 null）
+     */
+    private String password;
 
     //姓名
     private String name;

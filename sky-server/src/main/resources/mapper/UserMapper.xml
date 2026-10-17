@@ -3,12 +3,41 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
 <mapper namespace="com.sky.mapper.UserMapper">
 
+    <!--
+      同时服务于两条注册链路：
+        1. 微信小程序登录自动注册：只写 openid，不带 username/password；
+        2. 网页版账号注册：openid 与 username 写同一个值，并写入 BCrypt 密码。
+      因此 username/password 用动态列，为空时不参与 insert。
+      注意：user 是 SQL 保留字，必须用反引号包裹（MySQL 与 H2 均支持）。
+    -->
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        insert into user (openid, name, phone, sex, id_number, avatar, create_time)
-        values (#{openid}, #{name}, #{phone}, #{sex}, #{idNumber}, #{avatar}, #{createTime})
+        insert into `user`
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            openid,
+            <if test="username != null">username,</if>
+            <if test="password != null">password,</if>
+            name,
+            phone,
+            sex,
+            id_number,
+            avatar,
+            create_time,
+        </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            #{openid},
+            <if test="username != null">#{username},</if>
+            <if test="password != null">#{password},</if>
+            #{name},
+            #{phone},
+            #{sex},
+            #{idNumber},
+            #{avatar},
+            #{createTime},
+        </trim>
     </insert>
+
     <select id="countByMap" resultType="java.lang.Integer">
-        select count(id) from user
+        select count(id) from `user`
         <where>
             <if test="begin != null">
                 and create_time &gt;= #{begin}

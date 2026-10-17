@@ -2,6 +2,7 @@ package com.sky.service;
 
 import com.sky.dto.DishDTO;
 import com.sky.dto.DishPageQueryDTO;
+import com.sky.entity.Category;
 import com.sky.entity.Dish;
 import com.sky.result.PageResult;
 import com.sky.result.Result;
@@ -45,6 +46,13 @@ public interface DishService {
      * @return
      */
     List<DishVO> listWithFlavor(Dish dish);
+
+    /**
+     * 查询「有在售菜品」的菜品分类（C端首页左侧分类栏）
+     *
+     * @return 分类列表
+     */
+    List<Category> listAvailableCategory();
 }
 
 

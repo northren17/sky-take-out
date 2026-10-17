@@ -6,10 +6,10 @@
         insert into orders
         (number, status, user_id, address_book_id, order_time, checkout_time, pay_method, pay_status, amount, remark,
          phone, address, consignee, estimated_delivery_time, delivery_status, pack_amount, tableware_number,
-         tableware_status)
+         tableware_status, version)
         values (#{number}, #{status}, #{userId}, #{addressBookId}, #{orderTime}, #{checkoutTime}, #{payMethod},
                 #{payStatus}, #{amount}, #{remark}, #{phone}, #{address}, #{consignee},
-                #{estimatedDeliveryTime}, #{deliveryStatus}, #{packAmount}, #{tablewareNumber}, #{tablewareStatus})
+                #{estimatedDeliveryTime}, #{deliveryStatus}, #{packAmount}, #{tablewareNumber}, #{tablewareStatus}, 0)
     </insert>
     <update id="update" parameterType="com.sky.entity.Orders">
         update orders
@@ -36,10 +36,18 @@
                 status = #{status},
             </if>
             <if test="deliveryTime != null">
-                delivery_time = #{deliveryTime}
+                delivery_time = #{deliveryTime},
             </if>
+            version = version + 1
         </set>
-        where id = #{id}
+        <where>
+            <if test="id != null">
+                and id = #{id}
+            </if>
+            <if test="version != null">
+                and version = #{version}
+            </if>
+        </where>
     </update>
     <select id="pageQuery" resultType="Orders">
         select * from orders

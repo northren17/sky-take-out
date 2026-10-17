@@ -14,14 +14,24 @@
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
         </dependency>
+        <!-- 版本交给 Spring Boot BOM 统一管理（原 2.9.2 自定义版本会与 Boot 3 的 Jackson 2.19 冲突） -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
-            <version>2.9.2</version>
+        </dependency>
+        <!-- OrdersPageQueryDTO 使用 @DateTimeFormat（org.springframework.format.annotation） -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-context</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.github.xiaoymin</groupId>
-            <artifactId>knife4j-spring-boot-starter</artifactId>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-web</artifactId>
+        </dependency>
+        <!-- OpenAPI3 注解：@Schema / @Tag / @Operation（原 io.swagger:swagger-annotations 为 Swagger2，已废弃） -->
+        <dependency>
+            <groupId>io.swagger.core.v3</groupId>
+            <artifactId>swagger-annotations-jakarta</artifactId>
         </dependency>
     </dependencies>
 </project>

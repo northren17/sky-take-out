@@ -25,4 +25,18 @@ public class MessageConstant {
     public static final String ORDER_NOT_FOUND = "订单不存在";
     public static final String ALREDAY_EXISTS = "已存在";
     public static final String FLAVOR_NULL = "菜品未关联口味信息，无法起售";
+    public static final String DISH_NOT_FOUND = "菜品不存在";
+    public static final String SETMEAL_NOT_FOUND = "套餐不存在";
+
+    /* ==================== C端用户注册 / 登录 ==================== */
+    public static final String USERNAME_ALREADY_EXISTS = "该账号已被注册";
+    public static final String REGISTER_FAILED = "注册失败";
+    public static final String USERNAME_IS_NULL = "账号不能为空";
+    public static final String PASSWORD_IS_NULL = "密码不能为空";
+    public static final String PASSWORD_NOT_MATCH = "两次输入的密码不一致";
+    public static final String USERNAME_LENGTH_ERROR = "账号长度需在 4~32 位之间";
+    public static final String PASSWORD_LENGTH_ERROR = "密码长度需在 6~32 位之间";
+    public static final String CAPTCHA_IS_NULL = "验证码不能为空";
+    public static final String CAPTCHA_ERROR = "验证码错误或已过期";
+    public static final String CAPTCHA_GENERATE_FAILED = "验证码生成失败";
 }

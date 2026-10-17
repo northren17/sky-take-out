@@ -35,11 +35,17 @@ public interface OrderMapper {
     @Select("select * from orders where number = #{orderNumber}")
     Orders getByNumber(@Param("orderNumber") String orderNumber);
 
+    @Select("select * from orders where number = #{orderNumber} for update")
+    Orders getByNumberForUpdate(@Param("orderNumber") String orderNumber);
+
+    @Select("select * from orders where id = #{id} for update")
+    Orders getByIdForUpdate(@Param("id") Long id);
+
     /**
      * 修改订单信息
      * @param orders
      */
-    void update(Orders orders);
+    int update(Orders orders);
     // 在 OrderMapper.java 中添加
     /**
      * 根据订单号更新订单信息
@@ -78,6 +84,20 @@ public interface OrderMapper {
      */
     @Select("select * from orders where id=#{id}")
     Orders getByid(Long id);
+    @Select("select * from orders where id = #{id} and user_id = #{userId}")
+    Orders getByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
+    @Update("update orders set status = 2, pay_status = 1, checkout_time = #{checkoutTime}, " +
+            "version = version + 1 where id = #{id} and version = #{version} and status = 1 and pay_status = 0")
+    int markPaySuccess(@Param("id") Long id, @Param("version") Integer version,
+                       @Param("checkoutTime") LocalDateTime checkoutTime);
+
+    @Update("update orders set pay_status = 2, version = version + 1 where id = #{id} and pay_status = 1")
+    int markRefunded(Long id);
+
+    @Update("update orders set status = 6, cancel_reason = #{reason}, cancel_time = #{cancelTime}, " +
+            "version = version + 1 where id = #{id} and version = #{version} and status = 1 and pay_status = 0")
+    int cancelPendingPayment(@Param("id") Long id, @Param("version") Integer version,
+                             @Param("reason") String reason, @Param("cancelTime") LocalDateTime cancelTime);
     /**
      * 根据动态条件统计营业额
      * @param map

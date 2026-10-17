@@ -3,6 +3,7 @@ package com.sky.mapper;
 import com.github.pagehelper.Page;
 import com.sky.annotation.AutoFill;
 import com.sky.dto.DishPageQueryDTO;
+import com.sky.entity.Category;
 import com.sky.entity.Dish;
 import com.sky.enumeration.OperationType;
 import com.sky.vo.DishVO;
@@ -61,4 +62,18 @@ public interface DishMapper {
      * @return
      */
     Integer countByMap(Map map);
+
+    /**
+     * 查询「有在售菜品」的分类（C端首页左侧分类栏）
+     * <p>
+     * 只返回菜品分类（category.type = 1）、分类已启用且该分类下至少有一个起售菜品，
+     * 排序与分类表一致（sort 升序）。这样首页左侧不会出现点进去是空的分类。
+     *
+     * @return 分类列表（返回 Category 实体，字段与前端首页所需的 id/name/type/sort 一致）
+     */
+    @Select("select c.id, c.name, c.type, c.sort from category c "
+            + "where c.type = 1 and c.status = 1 "
+            + "and exists (select 1 from dish d where d.category_id = c.id and d.status = 1) "
+            + "order by c.sort asc, c.create_time desc")
+    List<Category> listAvailableCategory();
 }

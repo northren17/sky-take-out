@@ -1,22 +1,63 @@
 server:
   port: 8080
+  tomcat:
+    # 虚拟线程模式下，请求处理不再受平台线程池大小限制，可适当放大连接队列
+    accept-count: 1000
+    threads:
+      # 说明：开启虚拟线程后该配置仅影响少量内部线程，保留默认值即可
+      max: 200
 
 spring:
   profiles:
     active: dev
+  # ==================== JDK21 虚拟线程 ====================
+  # 开启后：Tomcat 的请求处理线程、自动配置的 applicationTaskExecutor 均使用虚拟线程
+  # 说明：Java21 虚拟线程遇到 synchronized 阻塞会发生 pinning，JEP 491 在 JDK24 才解决，
+  #       因此业务代码应避免长阻塞的 synchronized（本项目未使用）。
+  threads:
+    virtual:
+      enabled: true
+  # @Async / 自定义虚拟线程执行器的统一配置
+  task:
+    execution:
+      simple:
+        # 虚拟线程下无需排队，限制的是"同时在跑"的任务数，防止下游被打垮
+        concurrency-limit: 10000
+      shutdown:
+        await-termination: true
+        await-termination-period: 10s
   main:
-    allow-circular-references: true
+    allow-circular-references: false
   datasource:
     druid:
       driver-class-name: ${sky.datasource.driver-class-name}
       url: jdbc:mysql://${sky.datasource.host}:${sky.datasource.port}/${sky.datasource.database}?serverTimezone=Asia/Shanghai&useUnicode=true&characterEncoding=utf-8&zeroDateTimeBehavior=convertToNull&useSSL=false&allowPublicKeyRetrieval=true
       username: ${sky.datasource.username}
       password: ${sky.datasource.password}
-  redis:
-    host: ${sky.redis.host}
-    port: ${sky.redis.port}
-    password: ${sky.redis.password}
-    database: ${sky.redis.database}
+  data:
+    redis:
+      host: ${sky.redis.host}
+      port: ${sky.redis.port}
+      password: ${sky.redis.password}
+      database: ${sky.redis.database}
+  rabbitmq:
+    host: ${sky.rabbitmq.host}
+    port: ${sky.rabbitmq.port}
+    username: ${sky.rabbitmq.username}
+    password: ${sky.rabbitmq.password}
+    virtual-host: ${sky.rabbitmq.virtual-host}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+    listener:
+      simple:
+        # 虚拟线程下 RabbitMQ 消费者也可以做到"一消息一虚拟线程"，提升消费吞吐
+        virtual-threads: true
+        concurrency: 5
+        max-concurrency: 50
+        prefetch: 1
+        acknowledge-mode: auto
 
 
 mybatis:
@@ -26,6 +67,29 @@ mybatis:
   configuration:
     #开启驼峰命名
     map-underscore-to-camel-case: true
+
+# ==================== 接口文档（knife4j + springdoc-openapi） ====================
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  # 原 springfox 的两个 Docket 分组，改为 springdoc 的 group-configs
+  group-configs:
+    - group: 管理端接口
+      packages-to-scan: com.sky.controller.admin
+    - group: 用户端接口
+      packages-to-scan: com.sky.controller.user
+
+knife4j:
+  enable: true
+  # 生产环境建议开启认证：production: true + basic 用户名密码
+  production: false
+  setting:
+    language: zh_cn
 
 logging:
   level:

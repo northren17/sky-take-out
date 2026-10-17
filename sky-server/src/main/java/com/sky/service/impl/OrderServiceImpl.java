@@ -13,6 +13,7 @@ import com.sky.exception.OrderBusinessException;
 import com.sky.exception.ShoppingCartBusinessException;
 import com.sky.mapper.*;
 import com.sky.result.PageResult;
+import com.sky.service.CouponOrderPricingService;
 import com.sky.service.OrderService;
 import com.sky.utils.HttpClientUtil;
 import com.sky.utils.WeChatPayUtil;
@@ -28,11 +29,17 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.*;
+import org.springframework.data.redis.core.RedisTemplate;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import java.math.RoundingMode;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import com.sky.config.RabbitMQConfiguration;
 
 /**
  * 订单
@@ -43,11 +50,21 @@ public class OrderServiceImpl implements OrderService {
     @Autowired
     private OrderMapper orderMapper;
     @Autowired
+    private CouponMapper couponMapper;
+    @Autowired
+    private OrderRefundMapper orderRefundMapper;
+    @Autowired
+    private CouponOrderPricingService couponOrderPricingService;
+    @Autowired
     private OrderDetailMapper orderDetailMapper;
     @Autowired
     private ShoppingCartMapper shoppingCartMapper;
     @Autowired
     private AddressBookMapper addressBookMapper;
+    @Autowired
+    private RedisTemplate redisTemplate;
+    @Autowired
+    private RabbitTemplate rabbitTemplate;
     @Value("${sky.shop.address}")
     private String shopAddress;
 
@@ -62,7 +79,7 @@ public class OrderServiceImpl implements OrderService {
      * @param ordersSubmitDTO
      * @return
      */
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public OrderSubmitVO submitOrder(OrdersSubmitDTO ordersSubmitDTO) {
         //异常情况的处理（收货地址为空、超出配送范围、购物车为空）
         AddressBook addressBook = addressBookMapper.getById(ordersSubmitDTO.getAddressBookId());
@@ -80,9 +97,29 @@ public class OrderServiceImpl implements OrderService {
             throw new ShoppingCartBusinessException(MessageConstant.SHOPPING_CART_IS_NULL);
         }
 
+        LocalDateTime now = LocalDateTime.now();
+        BigDecimal itemsAmount = couponOrderPricingService.itemsAmount(shoppingCartList);
+        BigDecimal packFee = couponOrderPricingService.packFee(shoppingCartList);
+        BigDecimal deliveryFee = couponOrderPricingService.deliveryFee();
+        BigDecimal couponDiscount = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        UserCoupon selectedCoupon = null;
+        if (ordersSubmitDTO.getUserCouponId() != null) {
+            selectedCoupon = couponMapper.getUserCouponForUpdate(ordersSubmitDTO.getUserCouponId(), userId);
+            if (selectedCoupon == null || selectedCoupon.getStatus() != 0 ||
+                    now.isBefore(selectedCoupon.getValidStartTime()) ||
+                    !now.isBefore(selectedCoupon.getValidEndTime())) {
+                throw new OrderBusinessException("优惠券不存在、已使用或不在有效期内");
+            }
+            couponDiscount = couponOrderPricingService.discount(selectedCoupon, shoppingCartList);
+        }
+        BigDecimal payableAmount = itemsAmount.add(packFee).add(deliveryFee).subtract(couponDiscount)
+                .setScale(2, RoundingMode.HALF_UP);
+
         //构造订单数据
         Orders order = new Orders();
         BeanUtils.copyProperties(ordersSubmitDTO,order);
+        order.setAmount(payableAmount);
+        order.setPackAmount(shoppingCartList.stream().mapToInt(ShoppingCart::getNumber).sum());
         order.setPhone(addressBook.getPhone());
         order.setAddress(addressBook.getDetail());
         order.setConsignee(addressBook.getConsignee());
@@ -94,6 +131,33 @@ public class OrderServiceImpl implements OrderService {
 
         //向订单表插入1条数据
         orderMapper.insert(order);
+
+        OrderCouponSnapshot snapshot = new OrderCouponSnapshot();
+        snapshot.setOrderId(order.getId());
+        snapshot.setItemsAmount(itemsAmount);
+        snapshot.setPackFee(packFee);
+        snapshot.setDeliveryFee(deliveryFee);
+        snapshot.setCouponDiscount(couponDiscount);
+        snapshot.setPayableAmount(payableAmount);
+        snapshot.setCouponState(0);
+        if (selectedCoupon != null) {
+            if (couponMapper.lockUserCoupon(selectedCoupon.getId(), userId, order.getId(), now) != 1) {
+                throw new OrderBusinessException("优惠券已被其他订单使用");
+            }
+            snapshot.setUserCouponId(selectedCoupon.getId());
+            snapshot.setActivityId(selectedCoupon.getActivityId());
+            snapshot.setTemplateId(selectedCoupon.getTemplateId());
+            snapshot.setCouponNameSnapshot(selectedCoupon.getCouponNameSnapshot());
+            snapshot.setCouponTypeSnapshot(selectedCoupon.getCouponTypeSnapshot());
+            snapshot.setThresholdAmountSnapshot(selectedCoupon.getThresholdAmountSnapshot());
+            snapshot.setDiscountAmountSnapshot(selectedCoupon.getDiscountAmountSnapshot());
+            snapshot.setDiscountRateSnapshot(selectedCoupon.getDiscountRateSnapshot());
+            snapshot.setMaxDiscountAmountSnapshot(selectedCoupon.getMaxDiscountAmountSnapshot());
+            snapshot.setScopeTypeSnapshot(selectedCoupon.getScopeTypeSnapshot());
+            snapshot.setScopeDataSnapshot(selectedCoupon.getScopeDataSnapshot());
+            snapshot.setCouponState(1);
+        }
+        couponMapper.insertOrderCouponSnapshot(snapshot);
 
         //订单明细数据
         List<OrderDetail> orderDetailList = new ArrayList<>();
@@ -110,6 +174,11 @@ public class OrderServiceImpl implements OrderService {
         //清理购物车中的数据
         shoppingCartMapper.deleteByUserId(userId);
 
+        // 发送延迟消息到 MQ，用于 15 分钟后自动取消未支付订单
+        log.info("发送延迟消息到 MQ，订单 ID：{}", order.getId());
+        rabbitTemplate.convertAndSend(RabbitMQConfiguration.ORDER_DELAY_EXCHANGE, 
+                RabbitMQConfiguration.ORDER_DELAY_ROUTING_KEY, order.getId());
+
         //封装返回结果
         OrderSubmitVO orderSubmitVO = OrderSubmitVO.builder()
                 .id(order.getId())
@@ -121,8 +190,6 @@ public class OrderServiceImpl implements OrderService {
         return orderSubmitVO;
     }
     @Autowired
-    private UserMapper userMapper;
-    @Autowired
     private WeChatPayUtil weChatPayUtil;
     /**
      * 订单支付
@@ -130,10 +197,15 @@ public class OrderServiceImpl implements OrderService {
      * @param ordersPaymentDTO
      * @return
      */
+    @Transactional(rollbackFor = Exception.class)
     public OrderPaymentVO payment(OrdersPaymentDTO ordersPaymentDTO) throws Exception {
-        // 当前登录用户id
         Long userId = BaseContext.getCurrentId();
-        User user = userMapper.getByOpenid(userId);
+        Orders pendingOrder = orderMapper.getByNumberAndUserId(ordersPaymentDTO.getOrderNumber(), userId);
+        if (pendingOrder == null) throw new OrderBusinessException(MessageConstant.ORDER_NOT_FOUND);
+        if (!pendingOrder.getStatus().equals(Orders.PENDING_PAYMENT) ||
+                !pendingOrder.getPayStatus().equals(Orders.UN_PAID)) {
+            throw new OrderBusinessException("订单当前不可支付");
+        }
 
         // --- 修改开始：跳过真实的微信支付 ---
         // 调用微信支付接口，生成预支付交易单
@@ -174,39 +246,167 @@ public class OrderServiceImpl implements OrderService {
      *
      * @param outTradeNo
      */
+    @Transactional(rollbackFor = Exception.class)
     public void paySuccess(String outTradeNo) {
         // 支付回调场景无登录态，按订单号直接查询
-        Orders ordersDB = orderMapper.getByNumber(outTradeNo);
+        Orders ordersDB = orderMapper.getByNumberForUpdate(outTradeNo);
         if (ordersDB == null) {
-            log.error("支付回调处理失败，订单不存在，orderNumber={}", outTradeNo);
-            return;
+            throw new OrderBusinessException("支付回调处理失败：订单不存在");
         }
 
-        // 根据订单id更新订单的状态、支付方式、支付状态、结账时间
-        Orders orders = Orders.builder()
-                .id(ordersDB.getId())
-                .status(Orders.TO_BE_CONFIRMED)
-                .payStatus(Orders.PAID)
-                .checkoutTime(LocalDateTime.now())
-                .build();
-
-        orderMapper.update(orders);
-        //////////////////////////////////////////////
-        Map<String, Object> map = new HashMap<>();
-        map.put("type", 1);//消息类型，1表示来单提醒
-        map.put("orderId", orders.getId());
-        map.put("content", "订单号：" + outTradeNo);
-
-        //通过WebSocket实现来单提醒，向客户端浏览器推送消息
-        try {
-            webSocketServer.sendToAllClient(JSON.toJSONString(map));
-        } catch (Exception e) {
-            log.error("来单提醒推送失败，orderNumber={}", outTradeNo, e);
+        // 幂等性校验：如果订单已经是“待接单”或之后的处理状态，说明已经处理过支付回调，直接返回
+        if (ordersDB.getPayStatus().equals(Orders.PAID)) {
+            log.info("订单{}已处理过支付回调，无需重复处理", outTradeNo);
             return;
         }
-        log.info("模拟支付完成，已推送订单{}", outTradeNo);
-        ///////////////////////////////////////////////////
+        if (!ordersDB.getStatus().equals(Orders.PENDING_PAYMENT) ||
+                !ordersDB.getPayStatus().equals(Orders.UN_PAID)) {
+            throw new OrderBusinessException("订单状态不允许支付成功");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        if (orderMapper.markPaySuccess(ordersDB.getId(), ordersDB.getVersion(), now) != 1) {
+            throw new OrderBusinessException("订单支付状态已变化，请重试");
+        }
+        markCouponUsed(ordersDB.getId(), now);
+
+        // 发送消息到 MQ，异步处理支付成功后的逻辑（如 WebSocket 通知、统计等）
+        rabbitTemplate.convertAndSend(RabbitMQConfiguration.ORDER_EXCHANGE, 
+                RabbitMQConfiguration.ORDER_PAY_ROUTING_KEY, outTradeNo);
+        
+        log.info("支付成功消息已发送到 MQ，订单号：{}", outTradeNo);
     }
+
+    private void markCouponUsed(Long orderId, LocalDateTime now) {
+        OrderCouponSnapshot snapshot = couponMapper.getOrderCouponSnapshot(orderId);
+        if (snapshot == null || snapshot.getCouponState() == 0) return;
+        if (snapshot.getCouponState() != 1) {
+            throw new OrderBusinessException("订单优惠券状态与支付状态不一致");
+        }
+        if (couponMapper.useCouponForOrder(orderId, now) != 1 ||
+                couponMapper.updateOrderCouponState(orderId, 1, 2) != 1) {
+            throw new OrderBusinessException("核销优惠券失败");
+        }
+        if (couponMapper.incrementActivityUsedCount(orderId) != 1) {
+            throw new OrderBusinessException("更新活动使用统计失败");
+        }
+    }
+
+    private void releaseCoupon(Long orderId, LocalDateTime now) {
+        OrderCouponSnapshot snapshot = couponMapper.getOrderCouponSnapshot(orderId);
+        if (snapshot == null || snapshot.getCouponState() == 0) return;
+        if (snapshot.getCouponState() != 1) {
+            throw new OrderBusinessException("订单优惠券状态与取消状态不一致");
+        }
+        if (couponMapper.releaseCouponForOrder(orderId, now) != 1 ||
+                couponMapper.updateOrderCouponState(orderId, 1, 3) != 1) {
+            throw new OrderBusinessException("释放锁定优惠券失败");
+        }
+    }
+
+    private void requestFullRefund(Orders order, LocalDateTime now) throws Exception {
+        OrderRefundRecord previous = orderRefundMapper.getByOrderId(order.getId());
+        if (previous != null) {
+            if (previous.getStatus() == 0) return;
+            if (previous.getStatus() == 1) return;
+            throw new OrderBusinessException("该订单退款申请已失败，请联系商家处理");
+        }
+        String outRefundNo = "RF" + order.getId();
+        OrderRefundRecord refund = new OrderRefundRecord();
+        refund.setOutRefundNo(outRefundNo);
+        refund.setOrderId(order.getId());
+        refund.setOrderNumber(order.getNumber());
+        refund.setRefundAmount(order.getAmount());
+        refund.setStatus(0);
+        orderRefundMapper.insert(refund);
+
+        String responseBody = weChatPayUtil.refund(
+                order.getNumber(), outRefundNo, order.getAmount(), order.getAmount());
+        JSONObject response = JSON.parseObject(responseBody);
+        String refundStatus = response == null ? null : response.getString("status");
+        if (!StringUtils.hasText(refundStatus)) {
+            throw new OrderBusinessException("微信退款响应无状态，退款结果待核查");
+        }
+        orderRefundMapper.updateResponse(refund.getId(), responseBody);
+        if ("SUCCESS".equals(refundStatus)) {
+            completeRefund(refund, now, responseBody);
+        } else if (!"PROCESSING".equals(refundStatus)) {
+            throw new OrderBusinessException("微信退款未受理，退款状态：" + refundStatus);
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void refundNotification(String outRefundNo, String outTradeNo, BigDecimal refundAmount,
+                                   boolean success, String notificationBody) {
+        OrderRefundRecord refund = orderRefundMapper.getForUpdate(outRefundNo);
+        if (refund == null) throw new OrderBusinessException("退款通知对应的退款单不存在");
+        if (!refund.getOrderNumber().equals(outTradeNo) ||
+                refund.getRefundAmount().compareTo(refundAmount) != 0) {
+            throw new OrderBusinessException("退款通知订单号或金额与退款记录不匹配");
+        }
+        if (refund.getStatus() == 1) {
+            if (success) return;
+            throw new OrderBusinessException("退款通知状态与已完成退款记录冲突");
+        }
+        if (refund.getStatus() == 2) {
+            if (!success) return;
+            throw new OrderBusinessException("退款通知状态与已失败退款记录冲突");
+        }
+        if (refund.getStatus() != 0) {
+            throw new OrderBusinessException("退款单已处于终态，拒绝重复变更");
+        }
+        if (!success) {
+            orderRefundMapper.updateStatus(refund.getId(), 2, notificationBody);
+            log.error("订单退款失败，orderId={}, refundNo={}", refund.getOrderId(), outRefundNo);
+            return;
+        }
+        completeRefund(refund, LocalDateTime.now(), notificationBody);
+    }
+
+    private void completeRefund(OrderRefundRecord refund, LocalDateTime now, String responseBody) {
+        if (refund.getStatus() == 1) return;
+        if (orderRefundMapper.updateStatus(refund.getId(), 1, responseBody) != 1) {
+            throw new OrderBusinessException("更新退款状态失败");
+        }
+        Orders order = orderMapper.getByIdForUpdate(refund.getOrderId());
+        if (order == null) throw new OrderBusinessException("退款单关联订单不存在");
+        if (order.getPayStatus().equals(Orders.PAID)) {
+            if (orderMapper.markRefunded(order.getId()) != 1) {
+                throw new OrderBusinessException("更新订单退款状态失败");
+            }
+        } else if (!order.getPayStatus().equals(Orders.REFUND)) {
+            throw new OrderBusinessException("订单支付状态不允许退款完成");
+        }
+
+        OrderCouponSnapshot snapshot = couponMapper.getOrderCouponSnapshot(order.getId());
+        if (snapshot == null || snapshot.getCouponState() == 0) return;
+        if (snapshot.getCouponState() != 2) {
+            if (snapshot.getCouponState() == 4 || snapshot.getCouponState() == 5) return;
+            throw new OrderBusinessException("退款时订单优惠券状态不正确");
+        }
+        UserCoupon userCoupon = couponMapper.getUserCouponByIdForUpdate(snapshot.getUserCouponId());
+        if (userCoupon == null || couponMapper.restoreCouponAfterRefund(order.getId(), now) != 1) {
+            throw new OrderBusinessException("退款成功后返还优惠券失败");
+        }
+        boolean couponExpired = !userCoupon.getValidEndTime().isAfter(now);
+        int nextCouponState = couponExpired ? 5 : 4;
+        if (couponMapper.updateOrderCouponState(order.getId(), 2, nextCouponState) != 1 ||
+                couponMapper.decrementActivityUsedCount(order.getId()) != 1) {
+            throw new OrderBusinessException("退款后更新优惠券统计失败");
+        }
+    }
+
+    private void applyCouponSnapshot(OrderVO orderVO, Long orderId) {
+        OrderCouponSnapshot snapshot = couponMapper.getOrderCouponSnapshot(orderId);
+        if (snapshot == null) return;
+        orderVO.setItemsAmount(snapshot.getItemsAmount());
+        orderVO.setPackFee(snapshot.getPackFee());
+        orderVO.setDeliveryFee(snapshot.getDeliveryFee());
+        orderVO.setCouponDiscount(snapshot.getCouponDiscount());
+        orderVO.setCouponNameSnapshot(snapshot.getCouponNameSnapshot());
+    }
+
     /**
      * 用户端订单分页查询
      *
@@ -253,7 +453,7 @@ public class OrderServiceImpl implements OrderService {
      */
     public OrderVO details(Long id) {
         // 根据id查询订单
-        Orders orders = orderMapper.getById(id);
+        Orders orders = orderMapper.getByid(id);
 
         // 查询该订单对应的菜品/套餐明细
         List<OrderDetail> orderDetailList = orderDetailMapper.getByOrderId(orders.getId());
@@ -262,7 +462,20 @@ public class OrderServiceImpl implements OrderService {
         OrderVO orderVO = new OrderVO();
         BeanUtils.copyProperties(orders, orderVO);
         orderVO.setOrderDetailList(orderDetailList);
+        applyCouponSnapshot(orderVO, id);
 
+        return orderVO;
+    }
+
+    @Override
+    public OrderVO detailsForUser(Long id) {
+        Orders order = orderMapper.getByIdAndUserId(id, BaseContext.getCurrentId());
+        if (order == null) throw new OrderBusinessException(MessageConstant.ORDER_NOT_FOUND);
+        List<OrderDetail> details = orderDetailMapper.getByOrderId(order.getId());
+        OrderVO orderVO = new OrderVO();
+        BeanUtils.copyProperties(order, orderVO);
+        orderVO.setOrderDetailList(details);
+        applyCouponSnapshot(orderVO, order.getId());
         return orderVO;
     }
     /**
@@ -270,41 +483,59 @@ public class OrderServiceImpl implements OrderService {
      *
      * @param id
      */
+    @Transactional(rollbackFor = Exception.class)
     public void userCancelById(Long id) throws Exception {
-        // 根据id查询订单
-        Orders ordersDB = orderMapper.getById(id);
+        cancelOrder(id, BaseContext.getCurrentId(), "用户取消");
+    }
 
-        // 校验订单是否存在
-        if (ordersDB == null) {
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void adminCancelById(Long id) throws Exception {
+        cancelOrder(id, null, "商家取消");
+    }
+
+    private void cancelOrder(Long id, Long expectedUserId, String reason) throws Exception {
+        Orders order = orderMapper.getByIdForUpdate(id);
+        if (order == null) throw new OrderBusinessException(MessageConstant.ORDER_NOT_FOUND);
+        if (expectedUserId != null && !expectedUserId.equals(order.getUserId())) {
             throw new OrderBusinessException(MessageConstant.ORDER_NOT_FOUND);
         }
-
-        //订单状态 1待付款 2待接单 3已接单 4派送中 5已完成 6已取消
-        if (ordersDB.getStatus() > 2) {
+        LocalDateTime now = LocalDateTime.now();
+        if (order.getStatus().equals(Orders.PENDING_PAYMENT) &&
+                order.getPayStatus().equals(Orders.UN_PAID)) {
+            if (orderMapper.cancelPendingPayment(id, order.getVersion(), reason, now) != 1) {
+                throw new OrderBusinessException("订单状态已变化，请刷新后重试");
+            }
+            releaseCoupon(id, now);
+            return;
+        }
+        if (!order.getStatus().equals(Orders.TO_BE_CONFIRMED) ||
+                !order.getPayStatus().equals(Orders.PAID)) {
             throw new OrderBusinessException(MessageConstant.ORDER_STATUS_ERROR);
         }
-
-        Orders orders = new Orders();
-        orders.setId(ordersDB.getId());
-
-        // 订单处于待接单状态下取消，需要进行退款
-        if (ordersDB.getStatus().equals(Orders.TO_BE_CONFIRMED)) {
-            //调用微信支付退款接口
-            weChatPayUtil.refund(
-                    ordersDB.getNumber(), //商户订单号
-                    ordersDB.getNumber(), //商户退款单号
-                    new BigDecimal(0.01),//退款金额，单位 元
-                    new BigDecimal(0.01));//原订单金额
-
-            //支付状态修改为 退款
-            orders.setPayStatus(Orders.REFUND);
+        Orders cancelled = Orders.builder()
+                .id(order.getId())
+                .status(Orders.CANCELLED)
+                .cancelReason(reason)
+                .cancelTime(now)
+                .version(order.getVersion())
+                .build();
+        if (orderMapper.update(cancelled) != 1) {
+            throw new OrderBusinessException("订单状态已变化，请刷新后重试");
         }
+        requestFullRefund(order, now);
+    }
 
-        // 更新订单状态、取消原因、取消时间
-        orders.setStatus(Orders.CANCELLED);
-        orders.setCancelReason("用户取消");
-        orders.setCancelTime(LocalDateTime.now());
-        orderMapper.update(orders);
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void timeoutCancel(Long orderId) {
+        Orders order = orderMapper.getByIdForUpdate(orderId);
+        if (order == null || !order.getStatus().equals(Orders.PENDING_PAYMENT) ||
+                !order.getPayStatus().equals(Orders.UN_PAID)) return;
+        LocalDateTime now = LocalDateTime.now();
+        if (orderMapper.cancelPendingPayment(orderId, order.getVersion(), "订单超时未支付，自动取消", now) == 1) {
+            releaseCoupon(orderId, now);
+        }
     }
     /**
      * 再来一单
@@ -361,6 +592,7 @@ public class OrderServiceImpl implements OrderService {
                 OrderVO orderVO = new OrderVO();
                 BeanUtils.copyProperties(orders, orderVO);
                 String orderDishes = getOrderDishesStr(orders);
+                applyCouponSnapshot(orderVO, orders.getId());
 
                 // 将订单菜品信息封装到orderVO中，并添加到orderVOList
                 orderVO.setOrderDishes(orderDishes);
@@ -413,9 +645,15 @@ public class OrderServiceImpl implements OrderService {
      * @param ordersConfirmDTO
      */
     public void confirm(OrdersConfirmDTO ordersConfirmDTO) {
+        Orders ordersDB = orderMapper.getByid(ordersConfirmDTO.getId());
+        if (ordersDB == null) {
+            throw new OrderBusinessException(MessageConstant.ORDER_NOT_FOUND);
+        }
+
         Orders orders = Orders.builder()
                 .id(ordersConfirmDTO.getId())
                 .status(Orders.CONFIRMED)
+                .version(ordersDB.getVersion())
                 .build();
 
         orderMapper.update(orders);
@@ -425,35 +663,32 @@ public class OrderServiceImpl implements OrderService {
      *
      * @param ordersRejectionDTO
      */
+    @Transactional(rollbackFor = Exception.class)
     public void rejection(OrdersRejectionDTO ordersRejectionDTO) throws Exception {
         // 根据id查询订单
-        Orders ordersDB = orderMapper.getById(ordersRejectionDTO.getId());
+        Orders ordersDB = orderMapper.getByIdForUpdate(ordersRejectionDTO.getId());
 
         // 订单只有存在且状态为2（待接单）才可以拒单
         if (ordersDB == null || !ordersDB.getStatus().equals(Orders.TO_BE_CONFIRMED)) {
             throw new OrderBusinessException(MessageConstant.ORDER_STATUS_ERROR);
         }
 
-        //支付状态
-        Integer payStatus = ordersDB.getPayStatus();
-        if (payStatus == Orders.PAID) {
-            //用户已支付，需要退款
-            String refund = weChatPayUtil.refund(
-                    ordersDB.getNumber(),
-                    UUID.randomUUID().toString(), //生成唯一退款单号
-                    new BigDecimal(0.01),
-                    new BigDecimal(0.01));
-            log.info("申请退款：{}", refund);
+        if (!ordersDB.getPayStatus().equals(Orders.PAID)) {
+            throw new OrderBusinessException("待接单订单尚未支付，不能按已支付拒单流程处理");
         }
-
+        LocalDateTime now = LocalDateTime.now();
         // 拒单需要退款，根据订单id更新订单状态、拒单原因、取消时间
         Orders orders = new Orders();
         orders.setId(ordersDB.getId());
         orders.setStatus(Orders.CANCELLED);
         orders.setRejectionReason(ordersRejectionDTO.getRejectionReason());
-        orders.setCancelTime(LocalDateTime.now());
+        orders.setCancelTime(now);
+        orders.setVersion(ordersDB.getVersion());
 
-        orderMapper.update(orders);
+        if (orderMapper.update(orders) != 1) {
+            throw new OrderBusinessException("订单状态已变化，请刷新后重试");
+        }
+        requestFullRefund(ordersDB, now);
     }
     /**
      * 派送订单
@@ -462,7 +697,7 @@ public class OrderServiceImpl implements OrderService {
      */
     public void delivery(Long id) {
         // 根据id查询订单
-        Orders ordersDB = orderMapper.getById(id);
+        Orders ordersDB = orderMapper.getByid(id);
 
         // 校验订单是否存在，并且状态为3
         if (ordersDB == null || !ordersDB.getStatus().equals(Orders.CONFIRMED)) {
@@ -473,6 +708,7 @@ public class OrderServiceImpl implements OrderService {
         orders.setId(ordersDB.getId());
         // 更新订单状态,状态转为派送中
         orders.setStatus(Orders.DELIVERY_IN_PROGRESS);
+        orders.setVersion(ordersDB.getVersion());
 
         orderMapper.update(orders);
     }
@@ -483,7 +719,7 @@ public class OrderServiceImpl implements OrderService {
      */
     public void complete(Long id) {
         // 根据id查询订单
-        Orders ordersDB = orderMapper.getById(id);
+        Orders ordersDB = orderMapper.getByid(id);
 
         // 校验订单是否存在，并且状态为4
         if (ordersDB == null || !ordersDB.getStatus().equals(Orders.DELIVERY_IN_PROGRESS)) {
@@ -495,6 +731,7 @@ public class OrderServiceImpl implements OrderService {
         // 更新订单状态,状态转为完成
         orders.setStatus(Orders.COMPLETED);
         orders.setDeliveryTime(LocalDateTime.now());
+        orders.setVersion(ordersDB.getVersion());
 
         orderMapper.update(orders);
     }
@@ -571,6 +808,13 @@ public class OrderServiceImpl implements OrderService {
         Orders orders = orderMapper.getByid(id);
         if (orders == null) {
             throw new OrderBusinessException(MessageConstant.ORDER_NOT_FOUND);
+        }
+
+        // 基于Redis实现催单限流，60秒内只能催单一次
+        String remindKey = "remind:order:" + id;
+        Boolean success = redisTemplate.opsForValue().setIfAbsent(remindKey, "1", 60, TimeUnit.SECONDS);
+        if (success == null || !success) {
+            throw new OrderBusinessException("催单过于频繁，请稍后再试");
         }
 
         //基于WebSocket实现催单

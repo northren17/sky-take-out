@@ -7,6 +7,7 @@ import com.sky.constant.MessageConstant;
 import com.sky.constant.StatusConstant;
 import com.sky.dto.DishDTO;
 import com.sky.dto.DishPageQueryDTO;
+import com.sky.entity.Category;
 import com.sky.entity.Dish;
 import com.sky.entity.DishFlavor;
 import com.sky.exception.DeletionException;
@@ -195,7 +196,17 @@ public class DishServiceImpl implements DishService {
 
         return dishVOList;
     }
+
+    /**
+     * 查询「有在售菜品」的菜品分类（C端首页左侧分类栏）
+     *
+     * @return 分类列表
+     */
+    @Override
+    public List<Category> listAvailableCategory() {
+        return dishMapper.listAvailableCategory();
     }
+}
 
 
 
