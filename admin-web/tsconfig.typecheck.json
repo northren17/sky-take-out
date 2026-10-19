@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "tests/**/*.ts",
+    "tests/**/*.tsx",
+    "vite.config.mts"
+  ],
+  "exclude": [
+    "node_modules",
+    "src/**/*.vue"
+  ]
+}

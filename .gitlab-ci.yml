@@ -1,0 +1,2 @@
+include:
+  - local: /admin-web/.gitlab-ci.yml

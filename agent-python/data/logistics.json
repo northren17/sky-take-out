@@ -1,0 +1,57 @@
+[
+  {
+    "order_id": "ORD202610010001",
+    "carrier": "顺丰速运",
+    "tracking_number": "SF1234567890",
+    "status": "运输中",
+    "estimated_delivery": "2026-10-14",
+    "last_updated": "2026-10-13T08:35:00+08:00",
+    "nodes": [
+      {
+        "time": "2026-10-12T20:10:00+08:00",
+        "location": "上海浦东转运中心",
+        "description": "包裹已发往杭州转运中心"
+      },
+      {
+        "time": "2026-10-13T08:35:00+08:00",
+        "location": "杭州转运中心",
+        "description": "包裹到达杭州转运中心"
+      }
+    ]
+  },
+  {
+    "order_id": "ORD202610020002",
+    "carrier": null,
+    "tracking_number": null,
+    "status": "待揽收",
+    "estimated_delivery": null,
+    "last_updated": "2026-10-02T16:40:00+08:00",
+    "nodes": [
+      {
+        "time": "2026-10-02T16:40:00+08:00",
+        "location": "商家仓库",
+        "description": "订单已支付，等待商家发货"
+      }
+    ]
+  },
+  {
+    "order_id": "ORD202609250003",
+    "carrier": "中通快递",
+    "tracking_number": "ZTO9876543210",
+    "status": "已签收",
+    "estimated_delivery": "2026-09-29",
+    "last_updated": "2026-09-29T14:22:00+08:00",
+    "nodes": [
+      {
+        "time": "2026-09-28T18:05:00+08:00",
+        "location": "杭州西湖派送网点",
+        "description": "快件正在派送中"
+      },
+      {
+        "time": "2026-09-29T14:22:00+08:00",
+        "location": "杭州市西湖区文三路 88 号",
+        "description": "本人已签收"
+      }
+    ]
+  }
+]

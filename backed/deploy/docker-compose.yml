@@ -1,0 +1,178 @@
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${SKY_MYSQL_ROOT_PASSWORD:?Set SKY_MYSQL_ROOT_PASSWORD in deploy/.env}
+      MYSQL_DATABASE: ${SKY_DATASOURCE_DATABASE:?Set SKY_DATASOURCE_DATABASE in deploy/.env}
+      MYSQL_USER: ${SKY_DATASOURCE_USERNAME:?Set SKY_DATASOURCE_USERNAME in deploy/.env}
+      MYSQL_PASSWORD: ${SKY_DATASOURCE_PASSWORD:?Set SKY_DATASOURCE_PASSWORD in deploy/.env}
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+08:00
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    environment:
+      SKY_REDIS_PASSWORD: ${SKY_REDIS_PASSWORD:?Set SKY_REDIS_PASSWORD in deploy/.env}
+    command:
+      - /bin/sh
+      - -c
+      - exec redis-server --appendonly yes --appendfsync everysec --save 900 1 --requirepass "$$SKY_REDIS_PASSWORD"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$SKY_REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${SKY_RABBITMQ_USERNAME:?Set SKY_RABBITMQ_USERNAME in deploy/.env}
+      RABBITMQ_DEFAULT_PASS: ${SKY_RABBITMQ_PASSWORD:?Set SKY_RABBITMQ_PASSWORD in deploy/.env}
+      RABBITMQ_DEFAULT_VHOST: ${SKY_RABBITMQ_VIRTUAL_HOST:-/}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  sky-server:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      TZ: Asia/Shanghai
+      SKY_DATASOURCE_HOST: mysql
+      SKY_DATASOURCE_PORT: "3306"
+      SKY_DATASOURCE_DRIVER_CLASS_NAME: com.mysql.cj.jdbc.Driver
+      SKY_DATASOURCE_DATABASE: ${SKY_DATASOURCE_DATABASE:?Set SKY_DATASOURCE_DATABASE in deploy/.env}
+      SKY_DATASOURCE_USERNAME: ${SKY_DATASOURCE_USERNAME:?Set SKY_DATASOURCE_USERNAME in deploy/.env}
+      SKY_DATASOURCE_PASSWORD: ${SKY_DATASOURCE_PASSWORD:?Set SKY_DATASOURCE_PASSWORD in deploy/.env}
+      SKY_REDIS_HOST: redis
+      SKY_REDIS_PORT: "6379"
+      SKY_REDIS_PASSWORD: ${SKY_REDIS_PASSWORD:?Set SKY_REDIS_PASSWORD in deploy/.env}
+      SKY_REDIS_DATABASE: "0"
+      SKY_RABBITMQ_HOST: rabbitmq
+      SKY_RABBITMQ_PORT: "5672"
+      SKY_RABBITMQ_USERNAME: ${SKY_RABBITMQ_USERNAME:?Set SKY_RABBITMQ_USERNAME in deploy/.env}
+      SKY_RABBITMQ_PASSWORD: ${SKY_RABBITMQ_PASSWORD:?Set SKY_RABBITMQ_PASSWORD in deploy/.env}
+      SKY_RABBITMQ_VIRTUAL_HOST: ${SKY_RABBITMQ_VIRTUAL_HOST:-/}
+      SKY_AGENT_PYTHON_HMAC_SECRET: ${SKY_AGENT_PYTHON_HMAC_SECRET:?Set SKY_AGENT_PYTHON_HMAC_SECRET in deploy/.env}
+      SKY_AGENT_JAVA_HMAC_SECRET: ${SKY_AGENT_JAVA_HMAC_SECRET:?Set SKY_AGENT_JAVA_HMAC_SECRET in deploy/.env}
+      VOICE_AGENT_INTERNAL_URL: http://voice-agent:8000
+      APP_JWT_ADMIN_SECRET_KEY: ${APP_JWT_ADMIN_SECRET_KEY:?Set APP_JWT_ADMIN_SECRET_KEY in deploy/.env}
+      APP_JWT_USER_SECRET_KEY: ${APP_JWT_USER_SECRET_KEY:?Set APP_JWT_USER_SECRET_KEY in deploy/.env}
+      APP_BAIDU_AK: ${APP_BAIDU_AK:?Set APP_BAIDU_AK in deploy/.env}
+      SKY_ALIOSS_ENDPOINT: ${SKY_ALIOSS_ENDPOINT:-}
+      SKY_ALIOSS_ACCESS_KEY_ID: ${SKY_ALIOSS_ACCESS_KEY_ID:-}
+      SKY_ALIOSS_ACCESS_KEY_SECRET: ${SKY_ALIOSS_ACCESS_KEY_SECRET:-}
+      SKY_ALIOSS_BUCKET_NAME: ${SKY_ALIOSS_BUCKET_NAME:-}
+      SKY_WECHAT_APPID: ${SKY_WECHAT_APPID:-}
+      SKY_WECHAT_SECRET: ${SKY_WECHAT_SECRET:-}
+      SKY_WECHAT_MCHID: ${SKY_WECHAT_MCHID:-}
+      SKY_WECHAT_MCH_SERIAL_NO: ${SKY_WECHAT_MCH_SERIAL_NO:-}
+      SKY_WECHAT_PRIVATE_KEY_FILE_PATH: /run/secrets/wechat/apiclient_key.pem
+      SKY_WECHAT_API_V3_KEY: ${SKY_WECHAT_API_V3_KEY:-}
+      SKY_WECHAT_WE_CHAT_PAY_CERT_FILE_PATH: /run/secrets/wechat/platform_cert.pem
+      SKY_WECHAT_NOTIFY_URL: ${SKY_WECHAT_NOTIFY_URL:-}
+      SKY_WECHAT_REFUND_NOTIFY_URL: ${SKY_WECHAT_REFUND_NOTIFY_URL:-}
+    volumes:
+      - ./secrets/wechat:/run/secrets/wechat:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    logging:
+      options:
+        max-size: 20m
+        max-file: "5"
+
+  voice-agent:
+    build:
+      context: ../../agent-python
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:?Set DASHSCOPE_API_KEY in deploy/.env}
+      DASHSCOPE_WORKSPACE_ID: ${DASHSCOPE_WORKSPACE_ID:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:?Set DEEPSEEK_API_KEY in deploy/.env}
+      ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
+      AGENT_JAVA_INTERNAL_URL: http://sky-server:8080
+      AGENT_PYTHON_HMAC_SECRET: ${SKY_AGENT_PYTHON_HMAC_SECRET:?Set SKY_AGENT_PYTHON_HMAC_SECRET in deploy/.env}
+      AGENT_JAVA_HMAC_SECRET: ${SKY_AGENT_JAVA_HMAC_SECRET:?Set SKY_AGENT_JAVA_HMAC_SECRET in deploy/.env}
+      AGENT_ALLOWED_ORIGINS: https://${DOMAIN:?Set DOMAIN in deploy/.env}
+      RAG_MAX_COSINE_DISTANCE: ${RAG_MAX_COSINE_DISTANCE:-}
+      RAG_CALIBRATION_VERSION: ${RAG_CALIBRATION_VERSION:-unvalidated}
+      RAG_CALIBRATED_INDEX_VERSION: ${RAG_CALIBRATED_INDEX_VERSION:-}
+    volumes:
+      - agent_chroma:/app/data/chroma_db
+      - agent_logs:/app/logs
+    depends_on:
+      sky-server:
+        condition: service_started
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      options:
+        max-size: 20m
+        max-file: "5"
+
+  web:
+    build:
+      context: ../../user-web
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in deploy/.env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      sky-server:
+        condition: service_started
+      voice-agent:
+        condition: service_healthy
+    logging:
+      options:
+        max-size: 20m
+        max-file: "5"
+
+volumes:
+  mysql_data:
+  redis_data:
+  rabbitmq_data:
+  agent_chroma:
+  agent_logs:

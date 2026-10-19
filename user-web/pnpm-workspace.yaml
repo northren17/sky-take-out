@@ -1,0 +1,5 @@
+# pnpm 11+ 构建脚本白名单（不再读 package.json 的 pnpm 字段）
+# esbuild 需要下载平台二进制，Vite 依赖它；vue-demi 需要 postinstall 选择 Vue 版本
+allowBuilds:
+  esbuild: true
+  vue-demi: true

@@ -1,0 +1,714 @@
+/* 苍穹外卖管理端设计系统
+ * Warm white workspace + deep green navigation + restrained vermilion action.
+ * Loaded last so legacy page-level styles keep their behavior while sharing one UI language.
+ */
+:root {
+  --admin-primary: #b8371d;
+  --admin-primary-hover: #922b17;
+  --admin-primary-soft: #f8e9e4;
+  --admin-nav: #23352c;
+  --admin-nav-hover: #30483a;
+  --admin-bg: #f4f5f2;
+  --admin-surface: #ffffff;
+  --admin-text: #1d2420;
+  --admin-text-secondary: #626a65;
+  --admin-text-muted: #8a918c;
+  --admin-border: #dfe4df;
+  --admin-border-soft: #edf0ed;
+  --admin-success: #287a4b;
+  --admin-warning: #a86608;
+  --admin-danger: #b42318;
+  --admin-info: #356a78;
+  --admin-radius-sm: 4px;
+  --admin-radius: 6px;
+  --admin-radius-lg: 8px;
+  --admin-shadow-sm: 0 1px 2px rgba(25, 38, 30, 0.06);
+  --admin-shadow: 0 12px 30px rgba(25, 38, 30, 0.08);
+
+  /* Keep Element Plus and the application shell on one semantic palette. */
+  --el-color-primary: var(--admin-primary);
+  --el-color-primary-light-3: #c96853;
+  --el-color-primary-light-5: #dc9b8d;
+  --el-color-primary-light-7: #edc8c0;
+  --el-color-primary-light-9: var(--admin-primary-soft);
+  --el-color-success: var(--admin-success);
+  --el-color-warning: var(--admin-warning);
+  --el-color-danger: var(--admin-danger);
+  --el-color-info: var(--admin-info);
+  --el-border-radius-base: var(--admin-radius);
+  --el-border-color: var(--admin-border);
+  --el-text-color-primary: var(--admin-text);
+  --el-text-color-regular: var(--admin-text-secondary);
+}
+
+html,
+body,
+#app {
+  min-height: 100%;
+  background: var(--admin-bg);
+  color: var(--admin-text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei",
+    sans-serif;
+  letter-spacing: 0;
+}
+
+body {
+  min-width: 0 !important;
+}
+
+button,
+a,
+.el-button,
+.el-input__inner,
+.el-textarea__inner,
+.el-menu-item {
+  transition: color 180ms ease, background-color 180ms ease, border-color 180ms ease,
+    box-shadow 180ms ease, transform 140ms ease;
+}
+
+:focus-visible {
+  outline: 3px solid rgba(184, 55, 29, 0.34);
+  outline-offset: 2px;
+}
+
+.app-wrapper {
+  min-width: 0 !important;
+  background: var(--admin-bg);
+}
+
+.app-wrapper .main-container {
+  width: auto !important;
+  margin-left: 220px !important;
+  background: var(--admin-bg) !important;
+}
+
+.app-wrapper .sidebar-container {
+  width: 220px !important;
+  background: var(--admin-nav);
+  box-shadow: 8px 0 28px rgba(20, 34, 25, 0.08);
+}
+
+.app-wrapper.hideSidebar .main-container {
+  margin-left: 72px !important;
+}
+
+.app-wrapper.hideSidebar .sidebar-container {
+  width: 72px !important;
+}
+
+.sidebar-container .logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 72px !important;
+  padding: 0 !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--admin-nav) !important;
+}
+
+.sidebar-container .logo img {
+  max-width: 132px;
+  height: auto !important;
+  filter: brightness(0) invert(1);
+}
+
+.sidebar-container .el-scrollbar,
+.sidebar-container .el-menu {
+  background: var(--admin-nav) !important;
+}
+
+.sidebar-container .el-menu {
+  height: calc(100vh - 72px) !important;
+  padding: 22px 12px !important;
+}
+
+.sidebar-container .el-menu .el-menu-item {
+  display: flex;
+  align-items: center;
+  height: 46px !important;
+  min-width: 0 !important;
+  margin: 0 0 6px !important;
+  padding: 0 14px !important;
+  border-radius: var(--admin-radius) !important;
+  color: #c7d1ca !important;
+  line-height: 46px !important;
+}
+
+.sidebar-container .el-menu .el-menu-item:hover {
+  background: var(--admin-nav-hover) !important;
+  color: #fff !important;
+}
+
+.sidebar-container .router-link-active .el-menu-item,
+.sidebar-container .router-link-active .el-menu-item:hover {
+  background: #fff !important;
+  color: var(--admin-nav) !important;
+  box-shadow: var(--admin-shadow-sm);
+}
+
+.sidebar-container .el-menu-item i {
+  width: 24px;
+  margin-right: 10px !important;
+  font-size: 20px;
+  text-align: center;
+}
+
+.hideSidebar .sidebar-container .el-menu .el-menu-item {
+  justify-content: center;
+  padding: 0 !important;
+}
+
+.hideSidebar .sidebar-container .el-menu-item i {
+  margin-right: 0 !important;
+}
+
+.navbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 72px !important;
+  padding: 0 28px !important;
+  border-bottom: 1px solid var(--admin-border-soft);
+  background: rgba(255, 255, 255, 0.96) !important;
+  box-shadow: var(--admin-shadow-sm) !important;
+}
+
+.navbar .statusBox {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.navbar .page-title {
+  margin: 0;
+  color: var(--admin-text);
+  font-size: 18px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.navbar .businessBtn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid #b8d8c4;
+  border-radius: var(--admin-radius-sm);
+  background: #edf8f1 !important;
+  color: var(--admin-success) !important;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.navbar .businessBtn.closing {
+  border-color: #ead0cc;
+  background: #fff1ef !important;
+  color: var(--admin-danger) !important;
+}
+
+.navbar .right-menu .el-button--primary {
+  border-color: transparent !important;
+  background: transparent !important;
+  color: var(--admin-text) !important;
+}
+
+.navbar .right-menu {
+  display: flex;
+  align-items: center;
+  height: 72px;
+  margin-right: 0 !important;
+}
+
+.navbar .rightStatus {
+  height: 72px !important;
+  line-height: 72px !important;
+}
+
+.navbar .avatar-wrapper {
+  margin-top: 0 !important;
+}
+
+.navbar .right-menu span:hover {
+  border-radius: var(--admin-radius);
+  background: var(--admin-bg) !important;
+}
+
+.navbar .nav-action {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--admin-radius);
+  background: transparent;
+  color: var(--admin-text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.navbar .nav-action:hover,
+.navbar .nav-action:focus-visible {
+  background: var(--admin-bg);
+  color: var(--admin-text);
+}
+
+.navbar .user-menu-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--admin-radius-sm);
+  background: transparent;
+  color: var(--admin-text-secondary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.navbar .user-menu-action:hover,
+.navbar .user-menu-action:focus-visible {
+  background: var(--admin-bg);
+  color: var(--admin-text);
+}
+
+.dashboard-container {
+  width: min(100% - 48px, 1480px);
+  margin: 24px auto !important;
+}
+
+.dashboard-container > .container,
+.dashboard-container.home .container,
+.statistics-container .container {
+  padding: 24px !important;
+  border: 1px solid var(--admin-border-soft);
+  border-radius: var(--admin-radius-lg) !important;
+  background: var(--admin-surface) !important;
+  box-shadow: var(--admin-shadow-sm);
+}
+
+.dashboard-container.home .container {
+  margin-bottom: 18px !important;
+}
+
+.homeMain {
+  gap: 18px;
+}
+
+.homeMain .container:last-child {
+  margin-left: 0 !important;
+}
+
+.homeTitle {
+  margin-bottom: 18px !important;
+  color: var(--admin-text) !important;
+  font-size: 16px !important;
+  font-weight: 650 !important;
+  letter-spacing: 0 !important;
+}
+
+.overviewBox ul,
+.orderviewBox ul {
+  gap: 12px;
+  margin-left: 0 !important;
+}
+
+.overviewBox ul li,
+.orderviewBox ul li {
+  margin-left: 0 !important;
+  border: 1px solid var(--admin-border-soft);
+  border-radius: var(--admin-radius) !important;
+  background: #f7f8f6 !important;
+}
+
+.overviewBox .num,
+.orderviewBox .num {
+  color: var(--admin-text) !important;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650 !important;
+}
+
+.orderviewBox ul li.add {
+  border-color: var(--admin-primary) !important;
+  background: var(--admin-primary) !important;
+  color: #fff !important;
+}
+
+.tableBar {
+  display: flex !important;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  width: 100%;
+  margin-bottom: 22px !important;
+}
+
+.tableBar label {
+  margin: 0 !important;
+  color: var(--admin-text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tableBar .el-input,
+.tableBar .el-select,
+.tableBar .el-date-editor {
+  width: 190px !important;
+  max-width: 100%;
+}
+
+.tableBar .tableLab,
+.tableBar > div[style*="float: right"] {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  float: none !important;
+  margin-left: auto;
+}
+
+.tableBar .tableLab span {
+  padding: 0 10px !important;
+}
+
+.el-input__wrapper,
+.el-select__wrapper,
+.el-input__inner,
+.el-textarea__inner {
+  border-color: var(--admin-border) !important;
+  border-radius: var(--admin-radius) !important;
+  color: var(--admin-text);
+}
+
+.el-input__wrapper:hover,
+.el-select__wrapper:hover,
+.el-input__inner:hover,
+.el-textarea__inner:hover {
+  border-color: #abb5ae !important;
+}
+
+.el-input__wrapper.is-focus,
+.el-select__wrapper.is-focused,
+.el-input__inner:focus,
+.el-textarea__inner:focus {
+  border-color: var(--admin-primary) !important;
+  box-shadow: 0 0 0 3px rgba(184, 55, 29, 0.12);
+}
+
+.el-button {
+  min-height: 38px;
+  border-radius: var(--admin-radius) !important;
+  font-weight: 600;
+}
+
+.el-button:active:not(.is-disabled) {
+  transform: translateY(1px);
+}
+
+.el-button--primary,
+.normal-btn {
+  border-color: var(--admin-primary) !important;
+  background: var(--admin-primary) !important;
+  color: #fff !important;
+}
+
+.el-button--primary:hover,
+.el-button--primary:focus,
+.normal-btn:hover,
+.normal-btn:focus {
+  border-color: var(--admin-primary-hover) !important;
+  background: var(--admin-primary-hover) !important;
+}
+
+.el-button--text {
+  min-height: 32px;
+  padding-inline: 8px;
+  color: var(--admin-info) !important;
+}
+
+.el-button--text.delBut,
+.delBut {
+  color: var(--admin-danger) !important;
+}
+
+.tableBox {
+  overflow-x: auto;
+  border: 1px solid var(--admin-border-soft) !important;
+  border-radius: var(--admin-radius);
+}
+
+.el-table {
+  overflow: hidden;
+  border: 0 !important;
+  color: var(--admin-text);
+}
+
+.el-table::before,
+.el-table--border::after {
+  display: none;
+}
+
+.el-table th {
+  height: 48px;
+  background: #f2f4f1 !important;
+  color: #4f5953 !important;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.el-table td {
+  height: 58px;
+  border-bottom-color: var(--admin-border-soft) !important;
+}
+
+.el-table--striped .el-table__body tr.el-table__row--striped td {
+  background: #fafbfa !important;
+}
+
+.el-table__body tr:hover > td {
+  background: #f5f7f4 !important;
+}
+
+.el-image {
+  overflow: hidden;
+  border-radius: var(--admin-radius-sm);
+  background: #f0f2ef;
+}
+
+.tableColumn-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 9px;
+  border-radius: var(--admin-radius-sm);
+  background: #edf8f1;
+  color: var(--admin-success) !important;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.tableColumn-status.stop-use {
+  background: #f1f2f1;
+  color: var(--admin-text-muted) !important;
+}
+
+.pageList {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 22px !important;
+}
+
+.el-pagination.is-background .el-pager li:not(.disabled).active,
+.el-pager li.active {
+  color: var(--admin-primary) !important;
+}
+
+.el-dialog {
+  width: min(620px, calc(100vw - 32px)) !important;
+  min-width: 0 !important;
+  border-radius: var(--admin-radius-lg) !important;
+  box-shadow: var(--admin-shadow) !important;
+}
+
+.el-dialog__header {
+  padding: 20px 24px !important;
+  border-bottom: 1px solid var(--admin-border-soft) !important;
+  border-radius: var(--admin-radius-lg) var(--admin-radius-lg) 0 0 !important;
+  background: #fff !important;
+}
+
+.el-dialog__title {
+  color: var(--admin-text) !important;
+  font-size: 17px !important;
+  font-weight: 650 !important;
+}
+
+.el-dialog__body {
+  max-height: 68vh;
+  padding: 24px !important;
+  overflow-y: auto;
+}
+
+.el-dialog__footer {
+  padding: 0 24px 24px !important;
+}
+
+.el-message-box {
+  width: min(440px, calc(100vw - 32px));
+  border: 0;
+  border-radius: var(--admin-radius-lg);
+  box-shadow: var(--admin-shadow);
+}
+
+.el-tag {
+  border-radius: var(--admin-radius-sm);
+}
+
+.el-notification {
+  width: min(420px, calc(100vw - 32px)) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (max-width: 1100px) {
+  .dashboard-container {
+    width: calc(100% - 32px);
+    margin-block: 16px !important;
+  }
+
+  .tableBar .tableLab,
+  .tableBar > div[style*="float: right"] {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .overviewBox ul,
+  .orderviewBox ul {
+    flex-wrap: wrap;
+  }
+
+  .overviewBox ul li,
+  .orderviewBox ul li {
+    flex: 1 1 180px;
+  }
+}
+
+@media (max-width: 992px) {
+  .app-wrapper.mobile .main-container {
+    width: 100% !important;
+    margin-left: 0 !important;
+  }
+
+  .navbar {
+    padding-inline: 16px !important;
+  }
+
+  .navbar .page-title {
+    font-size: 16px;
+  }
+
+  .dashboard-container > .container,
+  .dashboard-container.home .container {
+    padding: 18px !important;
+  }
+
+  .homeMain {
+    display: block;
+  }
+}
+
+@media (max-width: 640px) {
+  .dashboard-container {
+    width: calc(100% - 20px);
+    margin-block: 10px !important;
+  }
+
+  .tableBar .el-input,
+  .tableBar .el-select,
+  .tableBar .el-date-editor {
+    width: 100% !important;
+  }
+
+  .el-dialog__body {
+    max-height: 72vh;
+    padding: 18px !important;
+  }
+}
+
+/* Login keeps the existing business form and validation, with a calmer split canvas. */
+.login {
+  min-height: 100dvh !important;
+  height: auto !important;
+  padding: 32px;
+  background: #20342a !important;
+}
+
+.login-box {
+  width: min(1040px, 100%) !important;
+  height: min(620px, calc(100dvh - 64px)) !important;
+  min-height: 500px;
+  overflow: hidden;
+  border-radius: var(--admin-radius-lg) !important;
+  background: #fff;
+  box-shadow: 0 28px 70px rgba(10, 24, 16, 0.28);
+}
+
+.login-box > img {
+  width: 58% !important;
+  object-fit: cover;
+}
+
+.login-form {
+  width: 42% !important;
+  border-radius: 0 !important;
+}
+
+.login-form .el-form {
+  width: min(280px, calc(100% - 56px)) !important;
+  height: auto !important;
+}
+
+.login-form .el-input__inner {
+  height: 44px !important;
+  padding-left: 34px !important;
+  border: 1px solid var(--admin-border) !important;
+  border-radius: var(--admin-radius) !important;
+  font-size: 14px !important;
+  line-height: 44px !important;
+}
+
+.login-form .el-input__prefix {
+  left: 10px !important;
+}
+
+.login-form .el-input__icon {
+  line-height: 44px !important;
+}
+
+.login-form .login-btn {
+  height: 44px;
+  margin-top: 4px !important;
+  border-radius: var(--admin-radius) !important;
+  background: var(--admin-primary) !important;
+  color: #fff !important;
+  font-size: 14px !important;
+}
+
+.login-form-title {
+  height: auto !important;
+  margin-bottom: 42px !important;
+}
+
+.login-form-title img {
+  width: 164px !important;
+  height: auto !important;
+}
+
+@media (max-width: 760px) {
+  .login {
+    padding: 20px;
+  }
+
+  .login-box {
+    height: auto !important;
+    min-height: 520px;
+  }
+
+  .login-box > img {
+    display: none;
+  }
+
+  .login-form {
+    width: 100% !important;
+  }
+}

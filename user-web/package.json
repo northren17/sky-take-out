@@ -1,0 +1,45 @@
+{
+  "name": "sky-takeout-h5",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "苍穹外卖用户端（点餐 H5）网页版 —— Vue3 + TypeScript + Vite + Element Plus + Pinia + Vue Router",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit -p tsconfig.app.json && vite build",
+    "preview": "vite preview",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.app.json",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix",
+    "gen:api": "node scripts/apifox-to-openapi.mjs && openapi-typescript openapi.json -o src/types/openapi.d.ts",
+    "check:consistency": "node scripts/check-consistency.mjs",
+    "check:render": "node scripts/check-render.mjs",
+    "mock:backend": "node scripts/mock-backend.mjs"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.1",
+    "axios": "^1.7.9",
+    "element-plus": "^2.9.3",
+    "pinia": "^2.3.0",
+    "vue": "^3.5.13",
+    "vue-router": "^4.5.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "@types/node": "^22.10.5",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "element-china-area-data": "^6.1.0",
+    "eslint": "^9.18.0",
+    "eslint-plugin-vue": "^9.32.0",
+    "globals": "^15.14.0",
+    "openapi-typescript": "^7.5.2",
+    "typescript": "~5.7.3",
+    "typescript-eslint": "^8.20.0",
+    "vite": "^6.0.7",
+    "vue-eslint-parser": "^9.4.3",
+    "vue-tsc": "^2.2.0"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  }
+}

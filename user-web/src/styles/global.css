@@ -1,0 +1,532 @@
+/* 苍穹外卖 responsive storefront design tokens */
+
+:root {
+  --sky-primary: #ed8a16;
+  --sky-primary-dark: #cc6c08;
+  --sky-primary-soft: #fff3df;
+  --sky-accent: #ed8a16;
+  --sky-price: #c96b10;
+  --sky-bg: #f1f3f7;
+  --sky-surface: #ffffff;
+  --sky-surface-2: #f3f5f8;
+  --sky-text: #202722;
+  --sky-text-sub: #606963;
+  --sky-text-weak: #858d87;
+  --sky-border: #e2e5e9;
+  --sky-border-soft: #eceef1;
+  --sky-success: #287a4b;
+  --sky-warning: #a86608;
+  --sky-danger: #b42318;
+  --sky-info: #356a78;
+  --sky-radius-sm: 6px;
+  --sky-radius: 10px;
+  --sky-radius-lg: 14px;
+  --sky-radius-pill: 999px;
+  --sky-shadow-sm: 0 1px 3px rgba(27, 39, 31, 0.05);
+  --sky-shadow: 0 8px 24px rgba(27, 39, 31, 0.08);
+  --sky-shadow-lg: 0 14px 32px rgba(27, 39, 31, 0.11);
+  --sky-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --sky-content-width: 1280px;
+  --sky-page-width: 1040px;
+  --sky-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei',
+    'Hiragino Sans GB', sans-serif;
+
+  /* Compatibility aliases for shared Element Plus controls. */
+  --paper: var(--sky-surface);
+  --ground: var(--sky-bg);
+  --ink: var(--sky-text);
+  --ink-2: var(--sky-text-sub);
+  --accent: var(--sky-primary);
+  --accent-ink: #ffffff;
+  --rule: var(--sky-border);
+  --tone: var(--sky-surface-2);
+  --tone-2: var(--sky-border);
+  --font-display: var(--sky-font);
+  --font-text: var(--sky-font);
+  --font-num: var(--sky-font);
+  --step-small: 0.8125rem;
+  --step-body: 0.9375rem;
+  --step-lead: 1.125rem;
+  --step-head: clamp(1.5rem, 1.2rem + 1vw, 2rem);
+  --step-display: clamp(2.25rem, 1.5rem + 3vw, 3.75rem);
+  --margin: clamp(1rem, 3vw, 2rem);
+  --gutter: clamp(1rem, 2vw, 1.5rem);
+  --section: clamp(3rem, 6vw, 5rem);
+  --radius: var(--sky-radius);
+  --ease-out: var(--sky-ease);
+  --ease-in-out: var(--sky-ease);
+  --t-press: 140ms;
+  --t-hover: 180ms;
+  --t-reveal: 400ms;
+
+  /* Element Plus consumes the same semantic palette as the custom UI. */
+  --el-color-primary: var(--sky-primary);
+  --el-color-primary-light-3: #f1a448;
+  --el-color-primary-light-5: #f4c384;
+  --el-color-primary-light-7: #f8dfbb;
+  --el-color-primary-light-9: var(--sky-primary-soft);
+  --el-color-success: var(--sky-success);
+  --el-color-warning: var(--sky-warning);
+  --el-color-danger: var(--sky-danger);
+  --el-color-info: var(--sky-info);
+  --el-border-radius-base: var(--sky-radius);
+  --el-border-color: var(--sky-border);
+  --el-text-color-primary: var(--sky-text);
+  --el-text-color-regular: var(--sky-text-sub);
+}
+
+/* ---------- reset ---------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scroll-padding-top: 116px;
+}
+
+body {
+  margin: 0;
+  background: var(--sky-bg);
+  color: var(--sky-text);
+  font-family: var(--sky-font);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: 0;
+}
+
+h1,
+h2,
+h3,
+h4,
+p,
+figure,
+blockquote,
+ul,
+ol,
+dl,
+dd {
+  margin: 0;
+}
+
+ul[class],
+ol[class] {
+  padding: 0;
+  list-style: none;
+}
+
+img,
+svg,
+canvas {
+  display: block;
+  max-width: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------- 类型 ---------- */
+h1,
+h2,
+h3 {
+  font-family: var(--sky-font);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  text-wrap: balance;
+}
+
+.display {
+  font-family: var(--font-display);
+  font-size: var(--step-display);
+  font-weight: 600;
+  line-height: 0.92;
+  letter-spacing: -0.03em;
+}
+
+.head {
+  font-size: var(--step-head);
+  line-height: 1.04;
+  letter-spacing: -0.025em;
+}
+
+.lead {
+  font-size: var(--step-lead);
+  line-height: 1.3;
+  max-width: 30ch;
+}
+
+.small {
+  font-size: var(--step-small);
+  line-height: 1.45;
+}
+
+.muted {
+  color: var(--ink-2);
+}
+
+p {
+  max-width: 62ch;
+}
+
+.nums {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* ---------- 版面 ---------- */
+.wrap {
+  padding-inline: var(--margin);
+}
+
+.wide {
+  width: 100%;
+  max-width: var(--sky-content-width);
+  padding-inline: var(--margin);
+  margin-inline: auto;
+}
+
+.section {
+  padding-block: calc(var(--section) / 2);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------- 控件：一种形状，用到底 ---------- */
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 3rem;
+  padding: 0 1.5rem;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: var(--step-body);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color var(--t-hover) ease, transform var(--t-press) var(--ease-out);
+}
+
+.button:hover:not(:disabled) {
+  background: #a93a22;
+}
+
+.button:active:not(:disabled) {
+  transform: scale(0.975);
+}
+
+.button:disabled {
+  background: var(--tone-2);
+  color: var(--ink-2);
+  cursor: not-allowed;
+}
+
+.button-quiet {
+  background: var(--tone);
+  color: var(--ink);
+}
+
+.button-quiet:hover:not(:disabled) {
+  background: var(--tone-2);
+}
+
+.link {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.2em;
+  text-decoration-color: var(--rule);
+  transition: text-decoration-color var(--t-hover) ease;
+}
+
+.link:hover {
+  text-decoration-color: var(--accent);
+}
+
+.field {
+  width: 100%;
+  min-height: 3rem;
+  padding: 0.6rem 0.9rem;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--tone);
+  font-size: max(1rem, var(--step-body));
+}
+
+/* ---------- 印刷件的通用件 ---------- */
+
+/* Retained only for any existing page that uses a shaped section edge. */
+.scallop-top {
+  --scallop: 26px;
+  mask-image: radial-gradient(circle at 50% 100%, transparent var(--scallop), #000 calc(var(--scallop) + 0.5px));
+  mask-size: calc(var(--scallop) * 2) 100%;
+  mask-repeat: repeat-x;
+  mask-position: bottom;
+}
+
+/* Legacy helper retained for existing page content. */
+.perforation {
+  display: block;
+  width: 100%;
+  height: 12px;
+  background: var(--tone-2);
+  clip-path: polygon(
+    0 0, 100% 0, 100% 0,
+    95% 100%, 90% 0, 85% 100%, 80% 0, 75% 100%, 70% 0, 65% 100%, 60% 0,
+    55% 100%, 50% 0, 45% 100%, 40% 0, 35% 100%, 30% 0, 25% 100%, 20% 0,
+    15% 100%, 10% 0, 5% 100%, 0 0
+  );
+}
+
+/* 戳记：旋转一点的方章 */
+.stamp {
+  display: inline-block;
+  padding: 0.35em 0.7em;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-family: var(--font-num);
+  font-size: var(--step-small);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+/* ---------- 动效：分区入场 ----------
+   用 CSS 动画而不是 IntersectionObserver：即使脚本没跑（静态快照、脚本失败），
+   内容也只是"直接出现"，不会卡在透明状态。阶梯延迟由 --i 控制（60–90ms 一档）。 */
+@media (prefers-reduced-motion: no-preference) {
+  [data-rise] {
+    animation: rise 0.9s var(--ease-out) both;
+    animation-delay: calc(var(--i, 0) * 80ms);
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(22px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---------- Shared transactional UI ---------- */
+#app {
+  min-height: 100dvh;
+}
+
+button,
+a,
+.el-button,
+.el-input__inner,
+.el-textarea__inner {
+  transition: border-color 180ms ease, background-color 180ms ease, color 180ms ease,
+    box-shadow 180ms ease, transform 140ms ease;
+}
+
+button:active:not(:disabled),
+.el-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.el-button {
+  min-height: 40px;
+  border-radius: var(--sky-radius);
+  font-weight: 600;
+}
+
+.el-button--primary,
+.el-button--warning {
+  border-color: var(--sky-primary);
+  background: var(--sky-primary);
+  color: #fff;
+}
+
+.el-button--primary:hover,
+.el-button--warning:hover,
+.el-button--primary:focus,
+.el-button--warning:focus {
+  border-color: var(--sky-primary-dark);
+  background: var(--sky-primary-dark);
+  color: #fff;
+}
+
+.el-input__wrapper,
+.el-textarea__inner,
+.el-select__wrapper {
+  border-radius: var(--sky-radius);
+  box-shadow: 0 0 0 1px var(--sky-border) inset;
+}
+
+.el-input__wrapper.is-focus,
+.el-textarea__inner:focus,
+.el-select__wrapper.is-focused {
+  box-shadow: 0 0 0 2px rgb(237 138 22 / 20%) inset;
+}
+
+.el-dialog {
+  max-width: min(560px, calc(100vw - 32px));
+  border-radius: var(--sky-radius-lg);
+  box-shadow: var(--sky-shadow-lg);
+}
+
+.el-dialog__header {
+  padding: 20px 22px 14px;
+  border-bottom: 1px solid var(--sky-border-soft);
+}
+
+.el-dialog__body {
+  max-height: min(68vh, 680px);
+  padding: 20px 22px;
+  overflow-y: auto;
+}
+
+.el-message {
+  max-width: calc(100vw - 32px);
+  border-radius: var(--sky-radius);
+}
+
+:is(.order-page, .detail-page, .history-page, .addr-page, .addr-edit-page, .my-page,
+  .pay-page, .remark-page, .success-page, .nonet-page) {
+  width: 100%;
+  max-width: var(--sky-page-width);
+  min-height: 100dvh !important;
+  margin-inline: auto;
+  background: var(--sky-bg) !important;
+  box-shadow: 0 0 0 1px var(--sky-border-soft);
+}
+
+:is(.order-page, .detail-page, .history-page, .addr-page, .addr-edit-page, .my-page,
+  .pay-page, .remark-page, .success-page) :is(.card, .order-card, .addr-item, .my-entries) {
+  border: 1px solid var(--sky-border-soft);
+  border-radius: var(--sky-radius-lg) !important;
+  background: var(--sky-surface);
+  box-shadow: var(--sky-shadow-sm);
+}
+
+.nums,
+.price,
+.order-amount,
+.pay-money,
+.dish-price,
+.bar-total {
+  font-variant-numeric: tabular-nums;
+}
+
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ellipsis-2 {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+@media (min-width: 768px) {
+  :is(.history-body, .my-orders, .order-body, .detail-body, .addr-body, .edit-body,
+    .remark-body) {
+    padding-inline: clamp(24px, 4vw, 48px) !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .el-dialog {
+    width: calc(100vw - 24px) !important;
+    margin-top: 8vh !important;
+  }
+
+  .el-dialog__body {
+    max-height: 72vh;
+    padding: 18px;
+  }
+}
+
+/* Stable fixed actions and comfortable touch targets across transactional pages. */
+.app-frame {
+  touch-action: manipulation;
+}
+
+:is(.address-footer, .addr-footer, .edit-footer, .order-bar, .pay-footer, .remark-footer) {
+  max-width: var(--sky-page-width) !important;
+  padding-bottom: max(14px, env(safe-area-inset-bottom)) !important;
+  border-top: 1px solid var(--sky-border-soft);
+  box-shadow: 0 -8px 24px rgba(25, 38, 30, 0.08);
+}
+
+:is(.order-page, .detail-page, .history-page, .addr-page, .addr-edit-page, .my-page,
+  .pay-page, .remark-page, .success-page, .nonet-page)
+  :is(.btn, .bar-submit, .my-logout, .nonet-btn) {
+  border-radius: var(--sky-radius) !important;
+}
+
+.order-bar {
+  min-height: calc(64px + env(safe-area-inset-bottom));
+  height: auto !important;
+}
+
+@media (max-width: 767px) {
+  :is(.order-page, .detail-page, .history-page, .addr-page, .addr-edit-page, .my-page,
+    .pay-page, .remark-page, .success-page) button:not(.el-dialog__headerbtn) {
+    min-height: 44px !important;
+    height: auto;
+  }
+
+  :is(.order-page, .detail-page, .history-page, .addr-page, .addr-edit-page, .my-page,
+    .pay-page, .remark-page, .success-page) :is(input, textarea, .el-input__wrapper,
+    .el-select__wrapper) {
+    min-height: 44px;
+  }
+}

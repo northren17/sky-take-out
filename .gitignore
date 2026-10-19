@@ -1,8 +1,51 @@
-**/target/
-.idea
+# IDE and operating system state
+**/.idea/
+**/.vscode/
+**/.history/
 *.iml
-*.class
-*Test.java
-**/test/
-# 本地开发环境配置（含 OSS 密钥、数据库密码、微信密钥等）
-/sky-server/src/main/resources/application-dev.yml
+.DS_Store
+Thumbs.db
+
+# Java build output
+**/target/
+**/*.class
+
+# JavaScript dependencies and build output
+**/node_modules/
+**/dist/
+**/dist-ssr/
+**/coverage/
+
+# Python environments, caches, and generated files
+**/.venv/
+**/venv/
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.vite/
+
+# Local credentials and deployment-only files
+**/.env
+**/.env.local
+**/.env.*.local
+backed/sky-server/config/application-dev-local.yml
+backed/deploy/.env
+backed/deploy/secrets/
+backed/deploy/certs/
+backed/deploy/redis-backups/
+
+# Runtime data and logs
+**/*.log
+agent-python/logs/
+agent-python/data/chroma_db/
+agent-python/data/tickets.json
+
+# Local reference data and backups
+user-web/.reverse-engineering/
+user-web/.taste-skill/
+agent-python/.codex-backups/
+admin-web/report.*.json
+语音识别agent/
+.taste-skill/

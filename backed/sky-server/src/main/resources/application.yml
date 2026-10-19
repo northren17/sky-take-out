@@ -1,0 +1,130 @@
+server:
+  port: 8080
+  tomcat:
+    # 虚拟线程模式下，请求处理不再受平台线程池大小限制，可适当放大连接队列
+    accept-count: 1000
+    threads:
+      # 说明：开启虚拟线程后该配置仅影响少量内部线程，保留默认值即可
+      max: 200
+
+spring:
+  profiles:
+    active: dev
+  # ==================== JDK21 虚拟线程 ====================
+  # 开启后：Tomcat 的请求处理线程、自动配置的 applicationTaskExecutor 均使用虚拟线程
+  # 说明：Java21 虚拟线程遇到 synchronized 阻塞会发生 pinning，JEP 491 在 JDK24 才解决，
+  #       因此业务代码应避免长阻塞的 synchronized（本项目未使用）。
+  threads:
+    virtual:
+      enabled: true
+  # @Async / 自定义虚拟线程执行器的统一配置
+  task:
+    execution:
+      simple:
+        # 虚拟线程下无需排队，限制的是"同时在跑"的任务数，防止下游被打垮
+        concurrency-limit: 10000
+      shutdown:
+        await-termination: true
+        await-termination-period: 10s
+  main:
+    allow-circular-references: false
+  datasource:
+    druid:
+      driver-class-name: ${sky.datasource.driver-class-name}
+      url: jdbc:mysql://${sky.datasource.host}:${sky.datasource.port}/${sky.datasource.database}?serverTimezone=Asia/Shanghai&useUnicode=true&characterEncoding=utf-8&zeroDateTimeBehavior=convertToNull&useSSL=false&allowPublicKeyRetrieval=true
+      username: ${sky.datasource.username}
+      password: ${sky.datasource.password}
+  data:
+    redis:
+      host: ${sky.redis.host}
+      port: ${sky.redis.port}
+      password: ${sky.redis.password}
+      database: ${sky.redis.database}
+  rabbitmq:
+    host: ${sky.rabbitmq.host}
+    port: ${sky.rabbitmq.port}
+    username: ${sky.rabbitmq.username}
+    password: ${sky.rabbitmq.password}
+    virtual-host: ${sky.rabbitmq.virtual-host}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+    listener:
+      simple:
+        # 虚拟线程下 RabbitMQ 消费者也可以做到"一消息一虚拟线程"，提升消费吞吐
+        virtual-threads: true
+        concurrency: 5
+        max-concurrency: 50
+        prefetch: 1
+        acknowledge-mode: auto
+
+mybatis:
+  #mapper配置文件
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.sky.entity
+  configuration:
+    #开启驼峰命名
+    map-underscore-to-camel-case: true
+
+# ==================== 接口文档（knife4j + springdoc-openapi） ====================
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  # 原 springfox 的两个 Docket 分组，改为 springdoc 的 group-configs
+  group-configs:
+    - group: 管理端接口
+      packages-to-scan: com.sky.controller.admin
+    - group: 用户端接口
+      packages-to-scan: com.sky.controller.user
+
+knife4j:
+  enable: true
+  # 生产环境建议开启认证：production: true + basic 用户名密码
+  production: false
+  setting:
+    language: zh_cn
+
+logging:
+  level:
+    com:
+      sky:
+        mapper: info
+        service: info
+        controller: info
+
+sky:
+  jwt:
+    # 设置jwt签名加密时使用的秘钥
+    admin-secret-key: ${APP_JWT_ADMIN_SECRET_KEY}
+    # 设置jwt过期时间
+    admin-ttl: 7200000
+    # 设置前端传递过来的令牌名称
+    admin-token-name: token
+    user-secret-key: ${APP_JWT_USER_SECRET_KEY}
+    user-ttl: 7200000
+    user-token-name: authentication
+  alioss:
+    endpoint: ${sky.alioss.endpoint}
+    access-key-id: ${sky.alioss.access-key-id}
+    access-key-secret: ${sky.alioss.access-key-secret}
+    bucket-name: ${sky.alioss.bucket-name}
+  wechat:
+    appid: ${sky.wechat.appid}
+    secret: ${sky.wechat.secret}
+    mchid: ${sky.wechat.mchid}
+    mchSerialNo: ${sky.wechat.mchSerialNo}
+   # privateKeyFilePath: ${sky.wechat.privateKeyFilePath}
+    apiV3Key: ${sky.wechat.apiV3Key}
+    #weChatPayCertFilePath: ${sky.wechat.weChatPayCertFilePath}
+    notifyUrl: ${sky.wechat.notifyUrl}
+    refundNotifyUrl: ${sky.wechat.refundNotifyUrl}
+  shop:
+      address: 湖北省黄冈市黄州区新港二路146号
+  baidu:
+      ak: ${APP_BAIDU_AK}

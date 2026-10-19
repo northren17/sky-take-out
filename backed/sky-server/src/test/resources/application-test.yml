@@ -1,0 +1,57 @@
+# 升级验证测试专用配置：不依赖本机 MySQL / Redis / RabbitMQ
+# 说明：test profile 不会加载 application-dev.yml，因此这里补齐 sky.* 配置项，
+#       否则 application.yml 中的 ${sky.alioss.*} 等占位符会解析成自身（circular placeholder）。
+sky:
+  jwt:
+    admin-secret-key: test-only-admin-signing-key
+    user-secret-key: test-only-user-signing-key
+  alioss:
+    endpoint: oss-cn-beijing.aliyuncs.com
+    access-key-id: test-access-key-id
+    access-key-secret: test-access-key-secret
+    bucket-name: test-bucket
+  wechat:
+    appid: test-appid
+    secret: test-secret
+    mchid: test-mchid
+    mchSerialNo: test-mch-serial-no
+    apiV3Key: test-api-v3-key
+    notifyUrl: http://localhost/notify/paySuccess
+    refundNotifyUrl: http://localhost/notify/refund
+  baidu:
+    ak: test-baidu-ak
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+    virtual-host: /
+  redis:
+    host: localhost
+    port: 6379
+    password: ""
+    database: 10
+
+spring:
+  datasource:
+    druid:
+      driver-class-name: org.h2.Driver
+      url: jdbc:h2:mem:sky_test;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+      username: sa
+      password: ""
+      # 连接池在拿不到连接时快速失败，避免像默认配置那样无限重连导致测试挂起
+      initial-size: 1
+      min-idle: 1
+      max-active: 8
+      max-wait: 5000
+      break-after-acquire-failure: true
+      connection-error-retry-attempts: 1
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:test-schema.sql
+      data-locations: classpath:test-data.sql
+  rabbitmq:
+    listener:
+      simple:
+        auto-startup: false

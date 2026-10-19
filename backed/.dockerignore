@@ -1,0 +1,10 @@
+.git
+.idea
+**/target
+**/config/application-dev-local.yml
+**/application-dev-local.yml
+deploy/.env
+deploy/secrets
+deploy/certs
+deploy/redis-backups
+*.log

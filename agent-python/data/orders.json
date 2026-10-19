@@ -1,0 +1,68 @@
+[
+  {
+    "order_id": "ORD202610010001",
+    "customer_id": "CUST001",
+    "status": "已发货",
+    "placed_at": "2026-10-01T10:15:00+08:00",
+    "payment_status": "已支付",
+    "total_amount": 299.0,
+    "items": [
+      {
+        "name": "无线降噪耳机",
+        "quantity": 1,
+        "unit_price": 299.0
+      }
+    ],
+    "shipping_address": "上海市浦东新区世纪大道 100 号",
+    "after_sales": {
+      "eligible": true,
+      "return_deadline": "2026-10-15",
+      "refund_status": "无退款申请",
+      "ticket_ids": []
+    }
+  },
+  {
+    "order_id": "ORD202610020002",
+    "customer_id": "CUST001",
+    "status": "待发货",
+    "placed_at": "2026-10-02T16:40:00+08:00",
+    "payment_status": "已支付",
+    "total_amount": 89.0,
+    "items": [
+      {
+        "name": "便携保温杯",
+        "quantity": 1,
+        "unit_price": 89.0
+      }
+    ],
+    "shipping_address": "上海市浦东新区世纪大道 100 号",
+    "after_sales": {
+      "eligible": false,
+      "return_deadline": null,
+      "refund_status": "无退款申请",
+      "ticket_ids": []
+    }
+  },
+  {
+    "order_id": "ORD202609250003",
+    "customer_id": "CUST002",
+    "status": "已签收",
+    "placed_at": "2026-09-25T09:20:00+08:00",
+    "payment_status": "已支付",
+    "total_amount": 159.0,
+    "items": [
+      {
+        "name": "桌面收纳架",
+        "quantity": 1,
+        "unit_price": 159.0
+      }
+    ],
+    "shipping_address": "杭州市西湖区文三路 88 号",
+    "after_sales": {
+      "eligible": true,
+      "return_deadline": "2026-10-09",
+      "refund_status": "无退款申请",
+      "ticket_ids": []
+    }
+  }
+]

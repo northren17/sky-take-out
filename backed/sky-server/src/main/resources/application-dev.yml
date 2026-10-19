@@ -1,0 +1,5 @@
+spring:
+  config:
+    import:
+      - optional:file:./config/application-dev-local.yml
+      - optional:file:./sky-server/config/application-dev-local.yml

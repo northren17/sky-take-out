@@ -1,0 +1,10 @@
+.env
+.venv
+tests
+.idea
+__pycache__
+*.py[cod]
+*.log
+logs
+data/chroma_db
+data/tickets.json

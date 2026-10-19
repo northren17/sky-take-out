@@ -1,0 +1,27 @@
+[
+  {
+    "customer_id": "CUST001",
+    "name": "李明",
+    "phone": "13800000001",
+    "member_level": "黄金会员",
+    "registered_at": "2025-06-18",
+    "default_address": "上海市浦东新区世纪大道 100 号",
+    "order_ids": [
+      "ORD202610010001",
+      "ORD202610020002"
+    ],
+    "after_sales_summary": "有 1 笔订单支持七天无理由退货，当前没有进行中的售后工单。"
+  },
+  {
+    "customer_id": "CUST002",
+    "name": "王芳",
+    "phone": "13900000002",
+    "member_level": "普通会员",
+    "registered_at": "2026-01-09",
+    "default_address": "杭州市西湖区文三路 88 号",
+    "order_ids": [
+      "ORD202609250003"
+    ],
+    "after_sales_summary": "当前没有进行中的售后工单。"
+  }
+]

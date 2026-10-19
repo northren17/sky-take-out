@@ -1,0 +1,31 @@
+stages:
+  - install
+  - deploy
+
+cache:
+  key: ${CI_BUILD_REF_NAME}
+  paths:
+    - admin-web/node_modules/
+
+install-staging:
+  stage: install
+  tags:
+    - reggie-vue-runner
+  only:
+    - main
+  script:
+    - npm --prefix admin-web install
+  artifacts:
+    expire_in: 60 mins
+    paths:
+      - admin-web/node_modules/
+
+deploy-staging:
+  stage: deploy
+  tags:
+    - reggie-vue-runner
+  only:
+    - main
+  script:
+    - npm --prefix admin-web run build:uat
+    - sudo cp -rf ./admin-web/dist/ /usr/share/nginx/html/reggie
