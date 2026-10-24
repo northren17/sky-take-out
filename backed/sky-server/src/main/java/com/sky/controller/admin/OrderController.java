@@ -4,6 +4,7 @@ import com.sky.dto.OrdersCancelDTO;
 import com.sky.dto.OrdersConfirmDTO;
 import com.sky.dto.OrdersPageQueryDTO;
 import com.sky.dto.OrdersRejectionDTO;
+import com.sky.dto.OrderRefundDTO;
 import com.sky.result.PageResult;
 import com.sky.result.Result;
 import com.sky.service.OrderService;
@@ -122,6 +123,20 @@ public class OrderController {
     @Operation(summary = "完成订单")
     public Result complete(@PathVariable("id") Long id) {
         orderService.complete(id);
+        return Result.success();
+    }
+
+    @PutMapping("/refund")
+    @Operation(summary = "申请部分退款")
+    public Result refund(@RequestBody OrderRefundDTO orderRefundDTO) throws Exception {
+        orderService.requestPartialRefund(orderRefundDTO);
+        return Result.success();
+    }
+
+    @PostMapping("/{id}/points/release")
+    @Operation(summary = "审核释放订单积分")
+    public Result releasePoints(@PathVariable("id") Long id) {
+        orderService.releasePoints(id);
         return Result.success();
     }
 }

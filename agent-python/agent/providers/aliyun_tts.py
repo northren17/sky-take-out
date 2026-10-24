@@ -1,6 +1,6 @@
 """Qwen 双向实时语音合成适配器。
 
-该 Provider 同时处理两个方向的数据：上行持续接收 DeepSeek 产生的文本增量，
+该 Provider 同时处理两个方向的数据：上行持续接收 Qwen 产生的文本增量，
 下行持续接收 Qwen 返回的 Base64 音频分片。DashScope SDK 使用同步调用和工作
 线程回调，本模块将阻塞方法放入 ``asyncio.to_thread``，并通过线程安全队列把
 回调事件交回 ``VoiceSession``。

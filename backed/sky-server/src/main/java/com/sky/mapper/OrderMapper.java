@@ -5,11 +5,12 @@ import com.sky.dto.GoodsSalesDTO;
 import com.sky.dto.OrdersPageQueryDTO;
 import com.sky.entity.Orders;
 import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
+import org.apache.ibatis.annotations.Param;
 
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
@@ -120,5 +121,23 @@ public interface OrderMapper {
      * @param begin
      * @param end
      */
-    List<GoodsSalesDTO> getSalesTop10(LocalDateTime beginTime, LocalDateTime endTime);
+    List<GoodsSalesDTO> getSalesTop10(@Param("begin") LocalDateTime beginTime,
+                                      @Param("end") LocalDateTime endTime);
+
+    @Select("select o.* from orders o where o.user_id=#{userId} and o.status=5 " +
+            "and not exists (select 1 from order_review r where r.order_id=o.id) " +
+            "order by o.order_time desc limit #{limit} offset #{offset}")
+    List<Orders> listCompletedUnreviewed(@Param("userId") Long userId,
+                                         @Param("limit") int limit,
+                                         @Param("offset") int offset);
+
+    @Select("select count(*) from orders o where o.user_id=#{userId} and o.status=5 " +
+            "and not exists (select 1 from order_review r where r.order_id=o.id)")
+    long countCompletedUnreviewed(Long userId);
+
+    @Select("select coalesce(sum(amount), 0) from orders where user_id = #{userId} " +
+            "and pay_status = 1 and checkout_time >= #{start} and checkout_time < #{end}")
+    BigDecimal sumPaidAmountForUserOnDate(@Param("userId") Long userId,
+                                          @Param("start") LocalDateTime start,
+                                          @Param("end") LocalDateTime end);
 }

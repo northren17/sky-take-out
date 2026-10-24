@@ -163,7 +163,7 @@ export default class UploadImage extends Vue {
 }
 
 .avatar-uploader .el-upload:hover {
-  border-color: #ffc200;
+  border-color: var(--admin-primary);
 }
 .el-upload-span {
   width: 100px;

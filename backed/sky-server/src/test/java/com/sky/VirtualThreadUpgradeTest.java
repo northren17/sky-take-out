@@ -93,7 +93,7 @@ class VirtualThreadUpgradeTest {
         assertThat(root.getStatusCode().is2xxSuccessful())
                 .as("根接口文档应返回 200，实际 body=%s", root.getBody())
                 .isTrue();
-        assertThat(root.getBody()).contains("苍穹外卖项目接口文档");
+        assertThat(root.getBody()).contains("智享云膳项目接口文档");
 
         // knife4j 页面访问 springdoc 的分组接口
         ResponseEntity<String> admin = restTemplate.getForEntity("/v3/api-docs/管理端接口", String.class);

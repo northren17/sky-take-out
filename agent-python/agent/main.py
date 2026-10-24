@@ -107,7 +107,7 @@ async def health() -> dict[str, str]:
     """返回最小健康状态，供启动脚本或存活探针检查。
 
     当前检查只证明 FastAPI 进程能够响应，不主动连接三个外部模型服务，因而
-    不代表 ASR、DeepSeek 和 TTS 都可用。
+    不代表 ASR、Qwen 对话模型和 TTS 都可用。
     """
 
     return {"status": "ok"}
@@ -171,7 +171,6 @@ async def voice_socket(websocket: WebSocket) -> None:
         if not isinstance(capability, str) or not capability:
             raise SessionAuthorizationError("Invalid session grant")
         await client.validate(session_id, capability)
-
         session = VoiceSession(
             websocket,
             settings,
@@ -246,6 +245,10 @@ async def voice_socket(websocket: WebSocket) -> None:
             elif control.get("type") == "interrupt":
                 last_user_activity_at = now
                 await session.interrupt()
+            elif control.get("type") == "input.finalize":
+                last_user_activity_at = now
+                if not await session.finalize_input():
+                    await session.interrupt()
             elif control.get("type") == "session.stop":
                 break
     except SessionAuthorizationError:

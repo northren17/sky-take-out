@@ -18,6 +18,9 @@ import java.util.concurrent.TimeUnit;
 
 @Service
 public class CouponClaimRedisService {
+    private static final int ACTIVITY_SYNC_RETRIES = 10;
+    private static final long ACTIVITY_SYNC_RETRY_DELAY_MILLIS = 50;
+
     private final StringRedisTemplate redisTemplate;
     private final DefaultRedisScript<Long> activitySyncScript;
     private final DefaultRedisScript<Long> reserveScript;
@@ -138,18 +141,35 @@ public class CouponClaimRedisService {
     }
 
     public void syncActivity(CouponActivity activity, boolean resetStock) {
-        Long result = redisTemplate.execute(activitySyncScript,
-                List.of(activityKey(activity.getId()), usersKey(activity.getId()),
-                        requestsKey(activity.getId()), reconcileLockKey(activity.getId())),
-                activity.getStatus().toString(),
-                activity.getStockRemaining().toString(),
-                activity.getStockTotal().toString(),
-                Long.toString(toEpochMillis(activity.getStartTime())),
-                Long.toString(toEpochMillis(activity.getEndTime())),
-                activity.getPerUserLimit().toString(),
-                resetStock ? "1" : "0");
+        Long result = null;
+        for (int attempt = 0; attempt <= ACTIVITY_SYNC_RETRIES; attempt++) {
+            result = redisTemplate.execute(activitySyncScript,
+                    List.of(activityKey(activity.getId()), usersKey(activity.getId()),
+                            requestsKey(activity.getId()), reconcileLockKey(activity.getId())),
+                    activity.getStatus().toString(),
+                    activity.getStockRemaining().toString(),
+                    activity.getStockTotal().toString(),
+                    Long.toString(toEpochMillis(activity.getStartTime())),
+                    Long.toString(toEpochMillis(activity.getEndTime())),
+                    activity.getPerUserLimit().toString(),
+                    resetStock ? "1" : "0");
+            if (result == null || result != -3 || attempt == ACTIVITY_SYNC_RETRIES) break;
+            try {
+                Thread.sleep(ACTIVITY_SYNC_RETRY_DELAY_MILLIS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("等待优惠券库存对账完成时被中断，activityId=" +
+                        activity.getId(), interrupted);
+            }
+        }
         if (result == null || result < 0) {
-            throw new IllegalStateException("同步优惠券活动状态到Redis失败，activityId=" + activity.getId());
+            String reason = result == null ? "Redis同步脚本无返回值"
+                    : result == -1 ? "Redis活动库存字段缺失"
+                    : result == -2 ? "Redis存在未完成领取请求"
+                    : result == -3 ? "优惠券库存仍在对账中"
+                    : "Redis同步脚本返回异常状态" + result;
+            throw new IllegalStateException("同步优惠券活动状态到Redis失败，activityId=" +
+                    activity.getId() + "，原因：" + reason);
         }
     }
 

@@ -1,4 +1,4 @@
-# 苍穹外卖 · 用户端网页版（响应式点餐平台）
+# 智享云膳 · 用户端网页版（响应式点餐平台）
 
 把微信小程序 **v2.0** 的用户端复刻成响应式网页版，优先适配桌面端，同时支持平板与手机。技术栈：**Vue 3 + TypeScript + Vite + Element Plus + Pinia + Vue Router**。
 
@@ -13,7 +13,7 @@
 ```bash
 pnpm install
 
-# 1) 启动真实后端（苍穹外卖 Spring Boot，默认 8080）
+# 1) 启动真实后端（Spring Boot，默认 8080）
 #    或先用仓库自带的桩服务看效果（演示数据，仅用于自检/演示）：
 pnpm mock:backend
 
@@ -39,7 +39,7 @@ pnpm dev            # http://localhost:5173
 | `VITE_API_BASE_URL` | `/api` | 前端请求前缀 |
 | `VITE_PROXY_TARGET` | `http://localhost:8080` | 代理目标（环境变量，可覆盖） |
 | `VITE_IMAGE_PREFIX` | `/api/common/download?name=` | 图片地址前缀 |
-| `VITE_SHOP_NAME` | `苍穹外卖` | 店铺显示名 |
+| `VITE_SHOP_NAME` | `智享云膳` | 店铺显示名 |
 | `VITE_SHOP_PHONE` | `400-618-4000` | 店铺电话 |
 | `VITE_AGENT_PROXY_TARGET` | `http://localhost:8000` | 开发/预览环境的语音 Agent WebSocket 代理目标 |
 | `VITE_AGENT_WS_URL` | 当前站点的 `/ws/voice` | 可选的语音 WebSocket 完整地址（生产建议使用同源 HTTPS/WSS） |

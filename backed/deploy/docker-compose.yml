@@ -77,8 +77,8 @@ services:
       SKY_RABBITMQ_USERNAME: ${SKY_RABBITMQ_USERNAME:?Set SKY_RABBITMQ_USERNAME in deploy/.env}
       SKY_RABBITMQ_PASSWORD: ${SKY_RABBITMQ_PASSWORD:?Set SKY_RABBITMQ_PASSWORD in deploy/.env}
       SKY_RABBITMQ_VIRTUAL_HOST: ${SKY_RABBITMQ_VIRTUAL_HOST:-/}
-      SKY_AGENT_PYTHON_HMAC_SECRET: ${SKY_AGENT_PYTHON_HMAC_SECRET:?Set SKY_AGENT_PYTHON_HMAC_SECRET in deploy/.env}
-      SKY_AGENT_JAVA_HMAC_SECRET: ${SKY_AGENT_JAVA_HMAC_SECRET:?Set SKY_AGENT_JAVA_HMAC_SECRET in deploy/.env}
+      SKY_AGENT_PYTHON_HMAC_SECRET: ${SKY_AGENT_PYTHON_HMAC_SECRET:-}
+      SKY_AGENT_JAVA_HMAC_SECRET: ${SKY_AGENT_JAVA_HMAC_SECRET:-}
       VOICE_AGENT_INTERNAL_URL: http://voice-agent:8000
       APP_JWT_ADMIN_SECRET_KEY: ${APP_JWT_ADMIN_SECRET_KEY:?Set APP_JWT_ADMIN_SECRET_KEY in deploy/.env}
       APP_JWT_USER_SECRET_KEY: ${APP_JWT_USER_SECRET_KEY:?Set APP_JWT_USER_SECRET_KEY in deploy/.env}
@@ -111,18 +111,20 @@ services:
         max-file: "5"
 
   voice-agent:
+    profiles:
+      - voice
     build:
       context: ../../agent-python
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:?Set DASHSCOPE_API_KEY in deploy/.env}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
       DASHSCOPE_WORKSPACE_ID: ${DASHSCOPE_WORKSPACE_ID:-}
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:?Set DEEPSEEK_API_KEY in deploy/.env}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
       AGENT_JAVA_INTERNAL_URL: http://sky-server:8080
-      AGENT_PYTHON_HMAC_SECRET: ${SKY_AGENT_PYTHON_HMAC_SECRET:?Set SKY_AGENT_PYTHON_HMAC_SECRET in deploy/.env}
-      AGENT_JAVA_HMAC_SECRET: ${SKY_AGENT_JAVA_HMAC_SECRET:?Set SKY_AGENT_JAVA_HMAC_SECRET in deploy/.env}
+      AGENT_PYTHON_HMAC_SECRET: ${SKY_AGENT_PYTHON_HMAC_SECRET:-}
+      AGENT_JAVA_HMAC_SECRET: ${SKY_AGENT_JAVA_HMAC_SECRET:-}
       AGENT_ALLOWED_ORIGINS: https://${DOMAIN:?Set DOMAIN in deploy/.env}
       RAG_MAX_COSINE_DISTANCE: ${RAG_MAX_COSINE_DISTANCE:-}
       RAG_CALIBRATION_VERSION: ${RAG_CALIBRATION_VERSION:-unvalidated}
@@ -152,6 +154,8 @@ services:
     build:
       context: ../../user-web
       dockerfile: Dockerfile
+      args:
+        VITE_ENABLE_VOICE_ASSISTANT: ${VITE_ENABLE_VOICE_ASSISTANT:-true}
     restart: unless-stopped
     environment:
       DOMAIN: ${DOMAIN:?Set DOMAIN in deploy/.env}
@@ -163,8 +167,6 @@ services:
     depends_on:
       sky-server:
         condition: service_started
-      voice-agent:
-        condition: service_healthy
     logging:
       options:
         max-size: 20m

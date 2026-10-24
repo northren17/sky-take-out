@@ -13,6 +13,8 @@ import java.io.Serializable;
 @AllArgsConstructor
 public class DishItemVO implements Serializable {
 
+    private Long dishId;
+
     //菜品名称
     private String name;
 

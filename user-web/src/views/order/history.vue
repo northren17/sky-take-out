@@ -8,6 +8,7 @@ import { getImageUrl } from '@/api/request'
 import { getOrderHistory, repetitionOrder, reminderOrder } from '@/api/modules/order'
 import { cleanShoppingCart } from '@/api/modules/cart'
 import { SUCCESS_CODE } from '@/constants/business'
+import { cancelReservation, listReservations, type Reservation } from '@/api/modules/meal'
 import type { OrderHistoryItem } from '@/types/api'
 import { fenToYuan, useCartStore } from '@/stores/cart'
 import { getOvertime, statusWord, sumOrderDetail } from '@/utils/order'
@@ -16,8 +17,8 @@ import { getOvertime, statusWord, sumOrderDetail } from '@/utils/order'
  * 历史订单（对应小程序 `pages/historyOrder/historyOrder`）
  *
  * 与源码一致：
- *  - tabBars = ['全部订单', '待付款', '退款']
- *  - tab 下标 → status：0 → ''，1 → 1，2 → 6
+ *  - 即时订单保留原有筛选，另增加独立的预约订单标签。
+ *  - 即时订单 tab 下标 → status：0 → ''，1 → 1，2 → 6
  *  - 请求 `GET /user/order/historyOrders`，参数 `{ page, pageSize: 10, status }`
  *  - 数据显示：下单时间 + 状态文案、横向菜品缩略图、合计金额与件数
  *  - 按钮：再来一单（都显示）、去支付（status === 1 且未超时）、催单（status === 2）
@@ -30,12 +31,13 @@ import { getOvertime, statusWord, sumOrderDetail } from '@/utils/order'
 const router = useRouter()
 const cart = useCartStore()
 
-const TAB_BARS = ['全部订单', '待付款', '退款']
+const TAB_BARS = ['全部订单', '待付款', '退款', '预约订单']
 const PAGE_SIZE = 10
 
 const tabIndex = ref(0)
 const status = ref<number | ''>('')
 const list = ref<OrderHistoryItem[]>([])
+const reservationList = ref<Reservation[]>([])
 const page = ref(1)
 const total = ref(0)
 const loading = ref(false)
@@ -52,16 +54,28 @@ function canReminder(item: OrderHistoryItem): boolean {
   return Number(item.status) === 2
 }
 
-const hasMore = () => list.value.length < Number(total.value)
+const hasMore = () =>
+  tabIndex.value === 3
+    ? reservationList.value.length >= page.value * PAGE_SIZE
+    : list.value.length < Number(total.value)
 
 async function loadList(reset = false) {
   if (loading.value) return
   loading.value = true
   if (reset) {
     page.value = 1
-    list.value = []
+    if (tabIndex.value === 3) reservationList.value = []
+    else list.value = []
   }
   try {
+    if (tabIndex.value === 3) {
+      const response = await listReservations(page.value, PAGE_SIZE)
+      if (response.code === SUCCESS_CODE) {
+        const records = response.data ?? []
+        reservationList.value = reset ? records : [...reservationList.value, ...records]
+      }
+      return
+    }
     const res = await getOrderHistory({
       page: page.value,
       pageSize: PAGE_SIZE,
@@ -99,6 +113,21 @@ function goDetail(id?: number) {
 
 function goPay(item: OrderHistoryItem) {
   router.push(`/pay/${item.id}`)
+}
+
+function reservationStatusText(status: number) {
+  return ['待取餐', '已取餐', '已取消', '超时未取'][status] ?? '状态未知'
+}
+
+async function cancelMyReservation(id: number) {
+  try {
+    const response = await cancelReservation(id)
+    if (response.code === SUCCESS_CODE) {
+      await loadList(true)
+    }
+  } catch {
+    // 请求层已提示
+  }
 }
 
 async function oneMoreOrder(id?: number) {
@@ -155,7 +184,30 @@ onMounted(() => {
     </div>
 
     <div v-loading="loading" class="history-body">
-      <template v-if="list.length > 0">
+      <template v-if="tabIndex === 3 && reservationList.length > 0">
+        <div v-for="reservation in reservationList" :key="`reservation-${reservation.id}`" class="order-card">
+          <div class="order-head">
+            <span class="order-time">{{ reservation.mealDate }} · {{ reservation.mealPeriod === 1 ? '午餐' : '晚餐' }}</span>
+            <span class="order-status" :class="{ pending: reservation.status === 0 }">
+              预约 · {{ reservationStatusText(reservation.status) }}
+            </span>
+          </div>
+          <div class="reservation-items">
+            <span v-for="item in reservation.items" :key="item.id">{{ item.itemName }} × {{ item.quantity }}</span>
+          </div>
+          <div class="order-actions">
+            <span class="order-amount">￥{{ Number(reservation.totalAmount).toFixed(2) }}</span>
+            <button v-if="reservation.status === 0" class="btn warn" type="button" @click="cancelMyReservation(reservation.id)">
+              取消预约
+            </button>
+          </div>
+        </div>
+        <div v-if="hasMore()" class="load-more">
+          <el-button :loading="loading" @click="loadMore">加载更多</el-button>
+        </div>
+      </template>
+
+      <template v-else-if="tabIndex !== 3 && list.length > 0">
         <div v-for="item in list" :key="item.id" class="order-card">
           <div class="order-head">
             <span class="order-time">{{ item.orderTime }}</span>
@@ -203,7 +255,7 @@ onMounted(() => {
         <p v-else class="no-more">没有更多了</p>
       </template>
 
-      <EmptyState v-else-if="!loading" text="暂无订单" image="/static/no_order.png" />
+      <EmptyState v-else-if="!loading" :text="tabIndex === 3 ? '暂无预约订单' : '暂无订单'" image="/static/no_order.png" />
     </div>
   </div>
 </template>
@@ -336,6 +388,21 @@ onMounted(() => {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+}
+
+.reservation-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 0;
+  color: var(--sky-text-sub);
+  font-size: 13px;
+}
+
+.reservation-items span {
+  padding: 5px 9px;
+  border-radius: 14px;
+  background: #f2f6f3;
 }
 
 .btn {

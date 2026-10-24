@@ -34,7 +34,7 @@ const routes: RouteRecordRaw[] = [
     path: '/index',
     name: 'index',
     component: () => import('@/views/index/index.vue'),
-    meta: { title: '苍穹外卖' },
+    meta: { title: '智享云膳' },
   },
   {
     path: '/order',
@@ -91,10 +91,34 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '个人中心' },
   },
   {
+    path: '/dining-preferences',
+    name: 'dining-preferences',
+    component: () => import('@/views/dining-preferences/index.vue'),
+    meta: { title: '口味与每日预算' },
+  },
+  {
     path: '/coupons',
     name: 'coupons',
     component: () => import('@/views/coupon/index.vue'),
     meta: { title: '优惠券' },
+  },
+  {
+    path: '/meals',
+    name: 'meals',
+    component: () => import('@/views/meal/index.vue'),
+    meta: { title: '套餐专区' },
+  },
+  {
+    path: '/reservation',
+    name: 'reservation',
+    component: () => import('@/views/reservation/index.vue'),
+    meta: { title: '预订点餐' },
+  },
+  {
+    path: '/reviews',
+    name: 'reviews',
+    component: () => import('@/views/review/index.vue'),
+    meta: { title: '评价晒单' },
   },
   { path: '/:pathMatch(.*)*', redirect: '/index' },
 ]

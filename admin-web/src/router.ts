@@ -5,12 +5,12 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/login',
     component: () => import(/* webpackChunkName: "login" */ '@/views/login/index.vue'),
-    meta: { title: '苍穹外卖', hidden: true, notNeedAuth: true }
+    meta: { title: '智享云膳', hidden: true, notNeedAuth: true }
   },
   {
     path: '/404',
     component: () => import(/* webpackChunkName: "404" */ '@/views/404.vue'),
-    meta: { title: '苍穹外卖', hidden: true, notNeedAuth: true }
+    meta: { title: '智享云膳', hidden: true, notNeedAuth: true }
   },
   {
     path: '/',
@@ -48,7 +48,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import(/* webpackChunkName: "coupon" */ '@/views/coupon/index.vue'),
         meta: {
           title: '优惠券管理',
-          icon: 'icon-vip'
+          icon: 'coupon'
         }
       },
       {

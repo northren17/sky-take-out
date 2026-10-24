@@ -76,6 +76,13 @@ export interface VoiceTicketVo {
   expiresInSeconds: number
 }
 
+export interface DiningPreference {
+  tastes: string[]
+  dailyBudget: number | null
+  spentToday: number
+  remainingBudget: number | null
+}
+
 /* -------------------------------------------------------------------------- */
 /* 接口                                                                        */
 /* -------------------------------------------------------------------------- */
@@ -131,4 +138,14 @@ export function userLogout() {
 /** `POST /user/voice-sessions/ticket` — issue a short-lived, one-time ticket */
 export function issueVoiceTicket() {
   return request.post<ApiEnvelope<VoiceTicketVo>>('/user/voice-sessions/ticket', {})
+}
+
+/** `GET /user/dining-preferences` — read tastes, daily budget, and today's paid spend */
+export function getDiningPreferences() {
+  return request.get<ApiEnvelope<DiningPreference>>('/user/dining-preferences')
+}
+
+/** `PUT /user/dining-preferences` — save tastes and the daily meal budget */
+export function saveDiningPreferences(params: Pick<DiningPreference, 'tastes' | 'dailyBudget'>) {
+  return request.put<ApiEnvelope<DiningPreference>>('/user/dining-preferences', params)
 }

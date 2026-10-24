@@ -5,12 +5,12 @@ import com.sky.dto.SetmealPageQueryDTO;
 import com.sky.result.PageResult;
 import com.sky.result.Result;
 import com.sky.service.SetmealService;
+import com.sky.service.SetmealStockService;
 import com.sky.vo.SetmealVO;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -30,6 +30,8 @@ public class SetmealController {
     @Autowired
     private SetmealService setmealService;
     @Autowired
+    private SetmealStockService setmealStockService;
+    @Autowired
     private RedisTemplate redisTemplate;
 
     /**
@@ -40,7 +42,6 @@ public class SetmealController {
      */
     @PostMapping
     @Operation(summary = "新增套餐")
-    @CacheEvict(cacheNames = "setmealCache",key = "#setmealDTO.categoryId")//key: setmealCache::100
     public Result save(@RequestBody SetmealDTO setmealDTO) {
         setmealService.saveWithDish(setmealDTO);
         // 清理手动缓存
@@ -69,7 +70,6 @@ public class SetmealController {
      */
     @DeleteMapping
     @Operation(summary = "批量删除套餐")
-    @CacheEvict(cacheNames = "setmealCache",allEntries = true)
     public Result delete(@RequestParam List<Long> ids) {
         setmealService.deleteBatch(ids);
         // 清理所有套餐手动缓存
@@ -98,9 +98,9 @@ public class SetmealController {
      */
     @PutMapping
     @Operation(summary = "修改套餐")
-    @CacheEvict(cacheNames = "setmealCache",allEntries = true)
     public Result update(@RequestBody SetmealDTO setmealDTO) {
         setmealService.update(setmealDTO);
+        setmealStockService.invalidate(setmealDTO.getId());
         // 清理所有套餐手动缓存
         cleanCache("setmeal_*");
         return Result.success();
@@ -115,7 +115,6 @@ public class SetmealController {
      */
     @PostMapping("/status/{status}")
     @Operation(summary = "套餐起售停售")
-    @CacheEvict(cacheNames = "setmealCache",allEntries = true)
     public Result startOrStop(@PathVariable Integer status, Long id) {
         setmealService.startOrStop(status, id);
         // 清理所有套餐手动缓存

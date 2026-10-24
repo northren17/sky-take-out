@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ChatDotRound, Close, Microphone, Phone, VideoPause } from '@element-plus/icons-vue'
 import { issueVoiceTicket } from '@/api/modules/user'
 import { SUCCESS_CODE } from '@/constants/business'
@@ -29,9 +29,22 @@ const INPUT_SAMPLE_RATE = 16_000
 const OUTPUT_SAMPLE_RATE = 24_000
 const AUDIO_HEADER_SIZE = 8
 const AUDIO_MAGIC = [0x56, 0x41, 0x31, 0x00]
+const INTRODUCTION =
+  '你好，我是智享云膳语音助手。我可以按你设置的口味偏好和今日剩余餐费，从当前在售菜单中推荐菜品或套餐，也能查询本人最近九十天内的订单和优惠券、解答平台政策问题、搜索公开信息。还没设置口味或每日预算的话，可以到个人中心进行设置。目前不支持取消订单、退款、物流查询或其他业务操作。如果没有听清或你问的功能暂不支持，我会直接告诉你。'
 
 const user = useUserStore()
 const isOpen = ref(false)
+const assistantRoot = ref<HTMLElement>()
+const assistantPosition = ref({ left: 0, top: 0 })
+const panelSize = ref({ width: 380, height: 520 })
+const panelOpensLeft = ref(true)
+const panelOpensDown = ref(true)
+const availablePanelWidth = ref(380)
+const availablePanelHeight = ref(520)
+const panelStyle = computed(() => ({
+  width: `${Math.min(panelSize.value.width, availablePanelWidth.value)}px`,
+  height: `${Math.min(panelSize.value.height, availablePanelHeight.value)}px`,
+}))
 const connectionState = ref<ConnectionState>('closed')
 const serverState = ref('')
 const interimTranscript = ref('')
@@ -62,6 +75,7 @@ const statusText = computed(() => {
 
 let socket: WebSocket | null = null
 let heartbeatTimer: number | undefined
+let recognitionFallbackTimer: number | undefined
 let generation = 0
 let lastEventSequence = 0
 let nextMessageId = 0
@@ -75,6 +89,206 @@ let silentGain: GainNode | undefined
 let playbackCursor = 0
 let pressRequested = false
 const playbackSources = new Set<AudioBufferSourceNode>()
+const POSITION_STORAGE_KEY = 'sky_voice_assistant_position'
+const SIZE_STORAGE_KEY = 'sky_voice_assistant_size'
+let dragPointerId: number | undefined
+let dragStart = { x: 0, y: 0, left: 0, top: 0 }
+let hasDragged = false
+let suppressLauncherClick = false
+let resizePointerId: number | undefined
+let resizeStart = { x: 0, y: 0, width: 0, height: 0 }
+
+function updatePanelDirection() {
+  const root = assistantRoot.value
+  if (!root) return
+  const bounds = root.getBoundingClientRect()
+  const margin = 12
+  const leftSpace = bounds.right - margin
+  const rightSpace = window.innerWidth - bounds.left - margin
+  panelOpensLeft.value = leftSpace >= rightSpace
+  availablePanelWidth.value = Math.max(
+    1,
+    panelOpensLeft.value ? leftSpace : rightSpace,
+  )
+  const belowSpace = window.innerHeight - bounds.top - 62 - margin
+  const aboveSpace = bounds.bottom - 62 - margin
+  panelOpensDown.value = belowSpace >= aboveSpace
+  availablePanelHeight.value = Math.max(
+    1,
+    panelOpensDown.value ? belowSpace : aboveSpace,
+  )
+}
+
+function clampAssistantPosition(left: number, top: number) {
+  const root = assistantRoot.value
+  if (!root) return
+  const bounds = root.getBoundingClientRect()
+  const margin = 12
+  assistantPosition.value = {
+    left: Math.min(Math.max(margin, left), window.innerWidth - bounds.width - margin),
+    top: Math.min(Math.max(margin, top), window.innerHeight - bounds.height - margin),
+  }
+  updatePanelDirection()
+}
+
+function placeAssistant() {
+  const root = assistantRoot.value
+  if (!root) return
+  const bounds = root.getBoundingClientRect()
+  const storedSize = window.localStorage.getItem(SIZE_STORAGE_KEY)
+  if (storedSize) {
+    try {
+      const size = JSON.parse(storedSize) as { width?: number; height?: number }
+      if (typeof size.width === 'number' && typeof size.height === 'number') {
+        panelSize.value = {
+          width: clamp(size.width, 300, 640),
+          height: clamp(size.height, 360, 760),
+        }
+      }
+    } catch {
+      window.localStorage.removeItem(SIZE_STORAGE_KEY)
+    }
+  }
+  const storedPosition = window.localStorage.getItem(POSITION_STORAGE_KEY)
+  if (storedPosition) {
+    try {
+      const position = JSON.parse(storedPosition) as { left?: number; top?: number }
+      if (typeof position.left === 'number' && typeof position.top === 'number') {
+        clampAssistantPosition(position.left, position.top)
+        return
+      }
+    } catch {
+      window.localStorage.removeItem(POSITION_STORAGE_KEY)
+    }
+  }
+  clampAssistantPosition(
+    window.innerWidth - bounds.width - 24,
+    window.innerHeight - bounds.height - (window.innerWidth <= 600 ? 92 : 24),
+  )
+}
+
+function beginLauncherDrag(event: PointerEvent) {
+  if (event.button !== 0) return
+  dragPointerId = event.pointerId
+  hasDragged = false
+  suppressLauncherClick = false
+  dragStart = {
+    x: event.clientX,
+    y: event.clientY,
+    left: assistantPosition.value.left,
+    top: assistantPosition.value.top,
+  }
+  ;(event.currentTarget as HTMLButtonElement).setPointerCapture(event.pointerId)
+}
+
+function moveLauncher(event: PointerEvent) {
+  if (dragPointerId !== event.pointerId) return
+  const deltaX = event.clientX - dragStart.x
+  const deltaY = event.clientY - dragStart.y
+  if (!hasDragged && Math.hypot(deltaX, deltaY) < 5) return
+  hasDragged = true
+  clampAssistantPosition(dragStart.left + deltaX, dragStart.top + deltaY)
+}
+
+function finishLauncherDrag(event: PointerEvent) {
+  if (dragPointerId !== event.pointerId) return
+  dragPointerId = undefined
+  if (hasDragged) {
+    suppressLauncherClick = true
+    window.localStorage.setItem(POSITION_STORAGE_KEY, JSON.stringify(assistantPosition.value))
+    window.setTimeout(() => {
+      suppressLauncherClick = false
+    }, 0)
+  }
+}
+
+function beginPanelResize(event: PointerEvent) {
+  if (event.button !== 0) return
+  resizePointerId = event.pointerId
+  resizeStart = {
+    x: event.clientX,
+    y: event.clientY,
+    width: panelSize.value.width,
+    height: panelSize.value.height,
+  }
+  ;(event.currentTarget as HTMLButtonElement).setPointerCapture(event.pointerId)
+}
+
+function resizePanel(event: PointerEvent) {
+  if (resizePointerId !== event.pointerId) return
+  const horizontalDelta = panelOpensLeft.value
+    ? resizeStart.x - event.clientX
+    : event.clientX - resizeStart.x
+  const verticalDelta = panelOpensDown.value
+    ? event.clientY - resizeStart.y
+    : resizeStart.y - event.clientY
+  panelSize.value = {
+    width: clamp(
+      resizeStart.width + horizontalDelta,
+      Math.min(300, availablePanelWidth.value),
+      Math.min(640, availablePanelWidth.value),
+    ),
+    height: clamp(
+      resizeStart.height + verticalDelta,
+      Math.min(360, availablePanelHeight.value),
+      Math.min(760, availablePanelHeight.value),
+    ),
+  }
+}
+
+function finishPanelResize(event: PointerEvent) {
+  if (resizePointerId !== event.pointerId) return
+  resizePointerId = undefined
+  window.localStorage.setItem(SIZE_STORAGE_KEY, JSON.stringify(panelSize.value))
+}
+
+function resizePanelWithKeyboard(event: KeyboardEvent) {
+  const step = event.shiftKey ? 40 : 16
+  if (event.key === 'ArrowLeft') panelSize.value.width -= step
+  else if (event.key === 'ArrowRight') panelSize.value.width += step
+  else if (event.key === 'ArrowDown') panelSize.value.height -= step
+  else if (event.key === 'ArrowUp') panelSize.value.height += step
+  else return
+  event.preventDefault()
+  panelSize.value = {
+    width: clamp(
+      panelSize.value.width,
+      Math.min(300, availablePanelWidth.value),
+      Math.min(640, availablePanelWidth.value),
+    ),
+    height: clamp(
+      panelSize.value.height,
+      Math.min(360, availablePanelHeight.value),
+      Math.min(760, availablePanelHeight.value),
+    ),
+  }
+  window.localStorage.setItem(SIZE_STORAGE_KEY, JSON.stringify(panelSize.value))
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), Math.max(min, max))
+}
+
+function handleViewportResize() {
+  clampAssistantPosition(assistantPosition.value.left, assistantPosition.value.top)
+  panelSize.value = {
+    width: clamp(
+      panelSize.value.width,
+      Math.min(300, availablePanelWidth.value),
+      Math.min(640, availablePanelWidth.value),
+    ),
+    height: clamp(
+      panelSize.value.height,
+      Math.min(360, availablePanelHeight.value),
+      Math.min(760, availablePanelHeight.value),
+    ),
+  }
+}
+
+onMounted(() => {
+  placeAssistant()
+  window.addEventListener('resize', handleViewportResize)
+})
 
 function pushMessage(role: MessageRole, text: string): number {
   const id = ++nextMessageId
@@ -108,6 +322,31 @@ function clearHeartbeat() {
     window.clearInterval(heartbeatTimer)
     heartbeatTimer = undefined
   }
+}
+
+function clearRecognitionFallback() {
+  if (recognitionFallbackTimer !== undefined) {
+    window.clearTimeout(recognitionFallbackTimer)
+    recognitionFallbackTimer = undefined
+  }
+}
+
+function scheduleRecognitionFallback(currentSocket: WebSocket) {
+  clearRecognitionFallback()
+  recognitionFallbackTimer = window.setTimeout(() => {
+    recognitionFallbackTimer = undefined
+    if (socket !== currentSocket || serverState.value !== 'listening') return
+
+    const recognizedText = interimTranscript.value.trim()
+    if (recognizedText) {
+      currentSocket.send(JSON.stringify({ type: 'input.finalize' }))
+      return
+    }
+
+    currentSocket.send(JSON.stringify({ type: 'interrupt' }))
+    interimTranscript.value = ''
+    pushMessage('assistant', '抱歉，这次没有听清。请靠近麦克风，再简短清晰地说一次。')
+  }, 10_000)
 }
 
 function clearPlayback() {
@@ -147,6 +386,7 @@ function disposeMicrophone() {
 function disconnect(clearMessages = false) {
   generation += 1
   clearHeartbeat()
+  clearRecognitionFallback()
   disposeMicrophone()
   const currentSocket = socket
   socket = null
@@ -206,12 +446,17 @@ function handleServerEvent(event: VoiceEvent) {
       } else if (event.state === 'error') {
         connectionState.value = 'error'
       }
+      if (event.state !== 'listening') clearRecognitionFallback()
       break
     case 'stt.partial':
       if (typeof event.turn_id === 'number') activeTurnId = event.turn_id
       interimTranscript.value = event.text ?? ''
+      if (!isTalking.value && !isFinishingInput.value && socket) {
+        scheduleRecognitionFallback(socket)
+      }
       break
     case 'stt.final':
+      clearRecognitionFallback()
       if (typeof event.turn_id === 'number') activeTurnId = event.turn_id
       interimTranscript.value = ''
       if (event.text) pushMessage('user', event.text)
@@ -227,6 +472,7 @@ function handleServerEvent(event: VoiceEvent) {
       clearPlayback()
       break
     case 'error':
+      clearRecognitionFallback()
       if (event.message) pushMessage('assistant', event.message)
       if (event.state === 'error' || event.type === 'error') {
         serverState.value = 'error'
@@ -267,7 +513,7 @@ function playAudioFrame(frame: ArrayBuffer) {
 
 async function connect() {
   if (!user.token || connectionState.value === 'connecting') return
-  disconnect(true)
+  disconnect(false)
   const currentGeneration = generation
   connectionState.value = 'connecting'
   microphoneError.value = ''
@@ -401,6 +647,8 @@ async function prepareMicrophone() {
 
 async function beginSpeech(event?: PointerEvent) {
   if (!canTalk.value || isTalking.value || pressRequested) return
+  clearRecognitionFallback()
+  window.speechSynthesis?.cancel()
   pressRequested = true
   if (event?.currentTarget instanceof HTMLButtonElement) {
     event.currentTarget.setPointerCapture(event.pointerId)
@@ -426,10 +674,22 @@ function beginKeyboardSpeech() {
 
 function toggleAssistant() {
   isOpen.value = !isOpen.value
-  if (!isOpen.value) disconnect(true)
+  if (!isOpen.value) {
+    window.speechSynthesis?.cancel()
+    disconnect(true)
+  } else {
+    pushMessage('assistant', INTRODUCTION)
+    if ('speechSynthesis' in window) {
+      const utterance = new SpeechSynthesisUtterance(INTRODUCTION)
+      utterance.lang = 'zh-CN'
+      utterance.rate = 1
+      window.speechSynthesis.speak(utterance)
+    }
+  }
 }
 
 function closeAssistant() {
+  window.speechSynthesis?.cancel()
   disconnect(true)
   isOpen.value = false
 }
@@ -450,6 +710,9 @@ async function endSpeech() {
     }
   } finally {
     isFinishingInput.value = false
+    if (socket === currentSocket && currentSocket.readyState === WebSocket.OPEN) {
+      scheduleRecognitionFallback(currentSocket)
+    }
   }
 }
 
@@ -467,14 +730,28 @@ watch(
 )
 
 onBeforeUnmount(() => disconnect(true))
+onBeforeUnmount(() => window.removeEventListener('resize', handleViewportResize))
 </script>
 
 <template>
-  <div class="voice-assistant">
-    <section v-if="isOpen" class="voice-panel" aria-label="语音助手">
+  <div
+    ref="assistantRoot"
+    class="voice-assistant"
+    :class="{
+      'panel-opens-left': panelOpensLeft,
+      'panel-opens-down': panelOpensDown,
+    }"
+    :style="{ left: `${assistantPosition.left}px`, top: `${assistantPosition.top}px` }"
+  >
+    <section
+      v-if="isOpen"
+      class="voice-panel"
+      aria-label="语音助手"
+      :style="panelStyle"
+    >
       <header class="panel-header">
         <div>
-          <strong>苍穹语音助手</strong>
+          <strong>智享云膳语音助手</strong>
           <p :class="{ 'status-error': connectionState === 'error' }" aria-live="polite">
             {{ statusText }}
           </p>
@@ -485,9 +762,6 @@ onBeforeUnmount(() => disconnect(true))
       </header>
 
       <div ref="messageList" class="message-list" aria-live="polite" aria-relevant="additions text">
-        <p v-if="!messages.length" class="welcome-message">
-          可查询本人近期订单和优惠券。语音仅用于本次会话，不保存原始音频。
-        </p>
         <article
           v-for="message in messages"
           :key="message.id"
@@ -551,20 +825,39 @@ onBeforeUnmount(() => disconnect(true))
           <button v-else class="connect-button" type="button" disabled>
             {{ connectionState === 'starting' ? '正在准备…' : '等待语音服务…' }}
           </button>
-          <button class="disconnect-button" type="button" @click="disconnect(true)">
-            结束会话
-          </button>
         </template>
+        <button class="disconnect-button" type="button" @click="closeAssistant">
+          关闭面板
+        </button>
       </div>
-      <p class="privacy-note">仅查询本人订单与优惠券，不支持取消或退款。</p>
+      <p class="privacy-note">当前会话结束后短期上下文清除。仅查询本人订单与优惠券，不支持取消或退款。</p>
+      <button
+        class="panel-resize-handle"
+        type="button"
+        aria-label="调整聊天框大小。使用方向键调整，按住 Shift 可加大步长"
+        aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"
+        title="拖动调整大小"
+        @pointerdown.prevent.stop="beginPanelResize"
+        @pointermove="resizePanel"
+        @pointerup="finishPanelResize"
+        @pointercancel="finishPanelResize"
+        @lostpointercapture="finishPanelResize"
+        @keydown="resizePanelWithKeyboard"
+      />
     </section>
 
     <button
       class="assistant-launcher"
       type="button"
       :aria-expanded="isOpen"
-      aria-label="打开苍穹语音助手"
-      @click="toggleAssistant"
+      aria-label="打开智享云膳语音助手"
+      title="拖动可移动语音助手"
+      @pointerdown="beginLauncherDrag"
+      @pointermove="moveLauncher"
+      @pointerup="finishLauncherDrag"
+      @pointercancel="finishLauncherDrag"
+      @lostpointercapture="finishLauncherDrag"
+      @click="suppressLauncherClick ? undefined : toggleAssistant()"
     >
       <el-icon><Close v-if="isOpen" /><ChatDotRound v-else /></el-icon>
       <span>{{ isOpen ? '收起' : '语音助手' }}</span>
@@ -575,8 +868,6 @@ onBeforeUnmount(() => disconnect(true))
 <style scoped>
 .voice-assistant {
   position: fixed;
-  right: max(24px, env(safe-area-inset-right));
-  bottom: max(24px, env(safe-area-inset-bottom));
   z-index: 80;
   font-family: inherit;
 }
@@ -605,6 +896,8 @@ onBeforeUnmount(() => disconnect(true))
   color: #fff;
   font-size: 14px;
   font-weight: 650;
+  touch-action: none;
+  user-select: none;
 }
 
 .assistant-launcher:hover,
@@ -615,17 +908,29 @@ onBeforeUnmount(() => disconnect(true))
 
 .voice-panel {
   position: absolute;
-  right: 0;
+  right: auto;
+  left: 0;
   bottom: 62px;
   display: flex;
   flex-direction: column;
-  width: min(380px, calc(100vw - 28px));
-  max-height: min(580px, calc(100dvh - 120px));
+  box-sizing: border-box;
   overflow: hidden;
+  min-width: 0;
+  min-height: 0;
   border: 1px solid #e6e9ef;
   border-radius: 18px;
   background: #fff;
   box-shadow: 0 18px 55px rgb(24 40 62 / 20%);
+}
+
+.panel-opens-left .voice-panel {
+  right: 0;
+  left: auto;
+}
+
+.panel-opens-down .voice-panel {
+  top: 62px;
+  bottom: auto;
 }
 
 .panel-header {
@@ -670,8 +975,7 @@ onBeforeUnmount(() => disconnect(true))
   flex: 1;
   flex-direction: column;
   gap: 12px;
-  min-height: 150px;
-  max-height: 330px;
+  min-height: 0;
   overflow-y: auto;
   padding: 16px;
   overscroll-behavior: contain;
@@ -776,25 +1080,38 @@ onBeforeUnmount(() => disconnect(true))
 
 .privacy-note {
   margin: 0;
-  padding: 0 12px 12px;
+  padding: 0 30px 12px 12px;
   color: #89919c;
   font-size: 11px;
   text-align: center;
 }
 
+.panel-resize-handle {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background:
+    linear-gradient(135deg, transparent 55%, #9aa3af 56% 61%, transparent 62%) 3px 3px / 16px 16px no-repeat,
+    linear-gradient(135deg, transparent 72%, #9aa3af 73% 78%, transparent 79%) 3px 3px / 16px 16px no-repeat;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+
+.panel-resize-handle:hover,
+.panel-resize-handle:focus-visible {
+  background-color: #f1f3f6;
+  outline: 2px solid #bd6b27;
+  outline-offset: 1px;
+}
+
 @media (max-width: 600px) {
-  .voice-assistant {
-    right: 14px;
-    bottom: calc(78px + env(safe-area-inset-bottom));
-  }
-
-  .voice-panel {
-    bottom: 58px;
-    max-height: calc(100dvh - 150px - env(safe-area-inset-bottom));
-  }
-
-  .message-list {
-    max-height: 38dvh;
+  .panel-opens-down .voice-panel {
+    top: 58px;
   }
 }
 </style>

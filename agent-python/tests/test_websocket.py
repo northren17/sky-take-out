@@ -33,6 +33,7 @@ class StubSession:
         self.started = False
         self.closed = False
         self.interrupts = 0
+        self.finalize_inputs = 0
         self.audio = []
         self._never = asyncio.Event()
         type(self).instances.append(self)
@@ -50,6 +51,10 @@ class StubSession:
 
     async def interrupt(self):
         self.interrupts += 1
+
+    async def finalize_input(self):
+        self.finalize_inputs += 1
+        return True
 
     async def close(self):
         self.closed = True
@@ -93,6 +98,9 @@ class WebSocketRouteTests(unittest.TestCase):
             return_value={"sessionCapability": "capability"}
         )
         self.java_client.validate = AsyncMock(return_value={"valid": True})
+        self.java_client.memories = AsyncMock(
+            return_value={"enabled": False, "memories": []}
+        )
         self.java_client.close = AsyncMock(return_value=None)
         self.registry_patch.start()
         self.addCleanup(self.voice_session_patch.stop)
@@ -112,12 +120,14 @@ class WebSocketRouteTests(unittest.TestCase):
     def test_normal_stop_closes_session_once(self):
         with self.connect_voice() as websocket:
             self.authenticate(websocket)
+            websocket.send_json({"type": "input.finalize"})
             websocket.send_json({"type": "interrupt"})
             websocket.send_json({"type": "session.stop"})
         session = StubSession.instances[-1]
         self.assertTrue(session.started)
         self.assertIs(session.business_client, self.java_client)
         self.assertEqual(session.session_capability, "capability")
+        self.assertEqual(session.finalize_inputs, 1)
         self.assertEqual(session.interrupts, 1)
         self.assertTrue(session.closed)
 
@@ -142,7 +152,7 @@ class WebSocketRouteTests(unittest.TestCase):
     def test_missing_required_configuration_returns_actionable_error(self):
         self.settings_mock.side_effect = ValidationError.from_exception_data(
             "Settings",
-            [{"type": "missing", "loc": ("DEEPSEEK_API_KEY",), "input": {}}],
+            [{"type": "missing", "loc": ("DASHSCOPE_API_KEY",), "input": {}}],
         )
         with self.connect_voice() as websocket:
             event = websocket.receive_json()
@@ -150,7 +160,7 @@ class WebSocketRouteTests(unittest.TestCase):
             self.assertEqual(event["code"], "configuration_error")
             self.assertEqual(event["source"], "configuration")
             self.assertFalse(event["recoverable"])
-            self.assertIn("DEEPSEEK_API_KEY", event["message"])
+            self.assertIn("DASHSCOPE_API_KEY", event["message"])
             self.assertIn(".env", event["message"])
         self.assertEqual(StubSession.instances, [])
 

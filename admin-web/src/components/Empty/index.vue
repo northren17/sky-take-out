@@ -26,13 +26,12 @@ export default class Empty extends Vue {
 <style scoped lang="scss">
 .empty-box {
   text-align: center;
-  margin: 120px 0;
+  margin: 24px 0;
   img {
-    margin: 0 atuo;
+    display: block;
+    margin: 0 auto 26px;
     width: 238px;
     height: 184px;
-    margin-top: 156px;
-    margin-bottom: 26px;
   }
   p {
     color: #818693;

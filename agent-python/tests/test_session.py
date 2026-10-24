@@ -146,6 +146,47 @@ class VoiceSessionTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(failure, ProviderConnectionError)
         self.assertIn("voice-tts-consumer", str(failure))
 
+    async def test_asr_timeout_reconnects_once_and_accepts_new_audio_generation(self):
+        session, websocket, asr, tts, agent = await self.make_session([["recovered"]])
+        await asr.emit(asr.error("CLIENT_ERROR: request timeout after 23 seconds"))
+        await wait_until(
+            lambda: any(
+                event["type"] == "error"
+                and event["code"] == "provider_reconnected"
+                for event in websocket.sent_json
+            )
+        )
+
+        self.assertEqual(asr.restart_calls, 1)
+        self.assertFalse(session._failure.done())
+        self.assertEqual(session._accepted_asr_generation, asr.input_generation)
+
+        await asr.emit(asr.transcript("hello", final=True))
+        await wait_until(lambda: tts.committed == [1])
+        self.assertEqual(agent.calls, ["hello"])
+
+    async def test_asr_timeout_reconnects_repeatedly_until_transcript_recovers(self):
+        session, websocket, asr, tts, agent = await self.make_session([["recovered"]])
+        timeout = asr.error("CLIENT_ERROR: request timeout after 23 seconds")
+        await asr.emit(timeout)
+        await wait_until(lambda: len([
+            event for event in websocket.sent_json
+            if event["type"] == "error" and event["code"] == "provider_reconnected"
+        ]) == 1)
+
+        await asr.emit(asr.error(timeout.message))
+        await wait_until(lambda: len([
+            event for event in websocket.sent_json
+            if event["type"] == "error" and event["code"] == "provider_reconnected"
+        ]) == 2)
+        self.assertEqual(asr.restart_calls, 2)
+        self.assertFalse(session._failure.done())
+
+        await asr.emit(asr.transcript("hello again", final=False))
+        await asr.emit(asr.transcript("hello again", final=True))
+        await wait_until(lambda: tts.committed == [1])
+        self.assertEqual(agent.calls, ["hello again"])
+
     async def test_late_old_tts_events_are_filtered_after_interrupt(self):
         session, websocket, asr, tts, _ = await self.make_session([["answer"]])
         await asr.emit(asr.transcript("question", final=True))

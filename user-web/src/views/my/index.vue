@@ -110,6 +110,10 @@ function goCoupons() {
   router.push('/coupons')
 }
 
+function goDiningPreferences() {
+  router.push('/dining-preferences')
+}
+
 function goDetail(id?: number) {
   if (id === undefined) return
   router.push(`/order/detail/${id}`)
@@ -186,6 +190,11 @@ onMounted(async () => {
       <button class="entry" type="button" @click="goCoupons">
         <img src="/static/order.png" alt="" />
         <span>我的优惠券</span>
+        <img class="entry-arrow" src="/static/toRight.png" alt="" />
+      </button>
+      <button class="entry" type="button" @click="goDiningPreferences">
+        <img src="/static/order.png" alt="" />
+        <span>口味与每日预算</span>
         <img class="entry-arrow" src="/static/toRight.png" alt="" />
       </button>
     </div>

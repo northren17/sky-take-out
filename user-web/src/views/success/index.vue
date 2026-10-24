@@ -47,6 +47,12 @@ const arrivalTime = computed(() => checkout.arrivalTime || '一小时')
 }
 
 .success-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: min(100%, 720px);
+  min-width: 0;
+  margin-inline: auto;
   padding: 40px 20px;
   text-align: center;
 }
@@ -54,7 +60,6 @@ const arrivalTime = computed(() => checkout.arrivalTime || '一小时')
 .success-icon {
   width: 96px;
   height: 96px;
-  margin: 0 auto;
   object-fit: contain;
 }
 
@@ -65,9 +70,12 @@ const arrivalTime = computed(() => checkout.arrivalTime || '一小时')
 }
 
 .success-word {
+  width: 100%;
+  max-width: 62ch;
   margin: 10px 0 0;
   color: var(--sky-text-sub);
   font-size: 14px;
+  text-align: center;
 }
 
 .success-time {
@@ -76,15 +84,20 @@ const arrivalTime = computed(() => checkout.arrivalTime || '一小时')
 }
 
 .success-desc {
+  width: 100%;
+  max-width: 62ch;
   margin: 8px 0 0;
   color: var(--sky-text-weak);
   font-size: 12px;
+  text-align: center;
 }
 
 .success-btns {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   justify-content: center;
+  width: 100%;
   margin-top: 30px;
 }
 

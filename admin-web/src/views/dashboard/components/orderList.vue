@@ -98,22 +98,16 @@
             <el-table-column
               label="操作"
               align="center"
-              :class-name="dialogOrderStatus === 0 ? 'operate' : 'otherOperate'"
-              :min-width="
-                [2, 3].includes(dialogOrderStatus)
-                  ? 130
-                  : [0].includes(dialogOrderStatus)
-                    ? 140
-                    : 'auto'
-              "
+              class-name="admin-table-action-column"
+              min-width="250"
             >
               <template #default="{ row }">
-                <!-- <el-divider direction="vertical" /> -->
-                <div class="before">
+                <div class="admin-table-actions">
                   <el-button
                     v-if="row.status === 2"
-                    type="text"
-                    class="blueBug"
+                    type="success"
+                    plain
+                    size="small"
                     @click="
                       orderAccept(row, $event), (isTableOperateBtn = true)
                     "
@@ -122,18 +116,18 @@
                   </el-button>
                   <el-button
                     v-if="row.status === 3"
-                    type="text"
-                    class="blueBug"
+                    type="primary"
+                    plain
+                    size="small"
                     @click="cancelOrDeliveryOrComplete(3, row.id, $event)"
                   >
                     派送
                   </el-button>
-                </div>
-                <div class="middle">
                   <el-button
                     v-if="row.status === 2"
-                    type="text"
-                    class="delBut"
+                    type="danger"
+                    plain
+                    size="small"
                     @click="
                       orderReject(row, $event), (isTableOperateBtn = true)
                     "
@@ -142,17 +136,17 @@
                   </el-button>
                   <el-button
                     v-if="[1, 3, 4, 5].includes(row.status)"
-                    type="text"
-                    class="delBut"
+                    type="danger"
+                    plain
+                    size="small"
                     @click="cancelOrder(row, $event)"
                   >
                     取消
                   </el-button>
-                </div>
-                <div class="after">
                   <el-button
-                    type="text"
-                    class="blueBug non"
+                    type="info"
+                    plain
+                    size="small"
                     @click="goDetail(row.id, row.status, row, $event)"
                   >
                     查看
@@ -919,20 +913,6 @@ export default class Orderview extends Vue {
   }
   .orderTime {
     padding-left: 30px;
-  }
-  td.operate .cell {
-    .before,
-    .middle,
-    .after {
-      height: 39px;
-      width: 48px;
-    }
-  }
-  td.operate .cell,
-  td.otherOperate .cell {
-    display: flex;
-    flex-wrap: nowrap;
-    justify-content: center;
   }
 }
 </style>

@@ -1,3 +1,6 @@
+# Local build caches
+.build-tmp/
+
 # IDE and operating system state
 **/.idea/
 **/.vscode/

@@ -168,6 +168,22 @@ class JavaInternalClient:
             raise InternalAgentError("Java returned an invalid coupon response")
         return result
 
+    async def recommendations(
+        self, session_id: str, capability: str
+    ) -> dict[str, Any]:
+        result = await self._request(
+            "POST",
+            f"/internal/agent/v1/voice-sessions/{session_id}/recommendations",
+            {"sessionCapability": capability},
+        )
+        if (
+            not isinstance(result, dict)
+            or not isinstance(result.get("items"), list)
+            or not isinstance(result.get("tastes"), list)
+        ):
+            raise InternalAgentError("Java returned an invalid recommendation response")
+        return result
+
     async def _request(
         self, method: str, path: str, payload: dict[str, Any]
     ) -> Any:

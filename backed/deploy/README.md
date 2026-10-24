@@ -1,13 +1,13 @@
 # 单机 Compose 部署
 
-该目录提供单服务器部署模板：用户端 Nginx、Java 后端、Python Agent、MySQL、Redis 和 RabbitMQ。
+该目录提供单服务器 Compose 部署模板：用户端 Nginx、Java 后端、可选 Python Agent、MySQL、Redis 和 RabbitMQ。
 Redis 使用单机持久化；不配置 Cluster、Sentinel 或多节点。Compose 不会自动应用数据库迁移。
 
 ## 启动前置条件
 
 1. 在 Linux 部署主机安装 Docker Engine 与 Docker Compose v2，并确认磁盘空间、时区、DNS 和外网访问符合业务要求。
 2. 准备真实域名和有效 TLS 证书，将证书链放到 `deploy/certs/fullchain.pem`，私钥放到 `deploy/certs/privkey.pem`。证书目录不会提交。
-3. 复制 `.env.example` 为 `deploy/.env`，按业务启用情况填写数据库、Redis、RabbitMQ、JWT、HMAC、模型及对象存储/微信支付变量。必须为两个通信方向分别生成至少 32 字节随机 HMAC secret；不能使用相同 secret。不可把真实凭证写入源码、前端变量、提示词或日志。
+3. 复制 `.env.example` 为 `deploy/.env`，按业务启用情况填写数据库、Redis、RabbitMQ、JWT、HMAC、模型及对象存储/微信支付变量。启用语音助手时，必须为两个通信方向分别生成至少 32 字节随机 HMAC secret，并提供所需模型凭证；不能使用相同 secret。不可把真实凭证写入源码、前端变量、提示词或日志。
 4. 微信支付启用时，将商户私钥和平台证书放到 `deploy/secrets/wechat/apiclient_key.pem` 与 `deploy/secrets/wechat/platform_cert.pem`。`deploy/secrets/` 已加入忽略规则。
 5. 核对现有建表/迁移脚本与目标 MySQL 数据库的实际版本，并由数据库负责人按已审查顺序手工执行。Compose 不挂载或自动执行 `db/` 下脚本，避免在已有数据库上意外重复或越序迁移。
 6. 检查 Agent 的 `data/policies.json` 是否符合苍穹外卖真实业务；当前文件包含通用电商示例政策，未确认前不得把其退货/优惠券规则当作本项目正式政策。RAG 阈值保持未校准时，不应向生产用户开放政策问答。
@@ -15,17 +15,31 @@ Redis 使用单机持久化；不配置 Cluster、Sentinel 或多节点。Compos
 
 ## 启动与检查
 
-在 `backend-java` 目录执行：
+### 普通部署（含语音助手）
+
+在项目根目录执行：
 
 ```powershell
-Copy-Item .\deploy\.env.example .\deploy\.env
-docker compose --env-file .\deploy\.env -f .\deploy\docker-compose.yml config --quiet
-docker compose --env-file .\deploy\.env -f .\deploy\docker-compose.yml build
-docker compose --env-file .\deploy\.env -f .\deploy\docker-compose.yml up -d
-docker compose --env-file .\deploy\.env -f .\deploy\docker-compose.yml ps
+Copy-Item .\backed\deploy\.env.example .\backed\deploy\.env
+# 在 .env 中设置 VITE_ENABLE_VOICE_ASSISTANT=true，并填好语音 HMAC 与模型服务凭证
+docker compose --env-file .\backed\deploy\.env -f .\backed\deploy\docker-compose.yml --profile voice config --quiet
+docker compose --env-file .\backed\deploy\.env -f .\backed\deploy\docker-compose.yml --profile voice build
+docker compose --env-file .\backed\deploy\.env -f .\backed\deploy\docker-compose.yml --profile voice up -d
+docker compose --env-file .\backed\deploy\.env -f .\backed\deploy\docker-compose.yml --profile voice ps
 ```
 
-只把 Web/Nginx 的 80、443 端口发布到主机；Java、Agent、MySQL、Redis、RabbitMQ 不发布宿主机端口。Nginx 将 `/api/` 转发至 Java 并剥离 `/api` 前缀，将 `/ws/voice` 以 Upgrade 方式转发至 Agent，读写超时为 75 秒。浏览器 Origin 必须与 `.env` 中 `DOMAIN` 对应。
+### 低配演示部署（不含语音助手）
+
+适用于约 2 核 2 GB 的低流量演示服务器。此模式不启动 `voice-agent`，并在用户端构建时隐藏语音助手入口；语音 WebSocket 不可用。无需填写 DashScope、DeepSeek 或语音专用 HMAC 密钥。演示覆盖文件为 Java、MySQL、Redis、RabbitMQ 和 Web 设置了内存上限；Java 堆上限约为 288 MB，适合低并发演示，不代表生产容量。
+
+```powershell
+docker compose --env-file .\backed\deploy\.env -f .\backed\deploy\docker-compose.yml -f .\backed\deploy\docker-compose.demo.yml config --quiet
+docker compose --env-file .\backed\deploy\.env -f .\backed\deploy\docker-compose.yml -f .\backed\deploy\docker-compose.demo.yml build
+docker compose --env-file .\backed\deploy\.env -f .\backed\deploy\docker-compose.yml -f .\backed\deploy\docker-compose.demo.yml up -d
+docker compose --env-file .\backed\deploy\.env -f .\backed\deploy\docker-compose.yml -f .\backed\deploy\docker-compose.demo.yml ps
+```
+
+只把 Web/Nginx 的 80、443 端口发布到主机；Java、Agent、MySQL、Redis、RabbitMQ 不发布宿主机端口。Nginx 将 `/api/` 转发至 Java 并剥离 `/api` 前缀；含语音助手时，`/ws/voice` 以 Upgrade 方式转发至 Agent，读写超时为 75 秒。浏览器 Origin 必须与 `.env` 中 `DOMAIN` 对应。
 
 ## 持久化、备份与恢复
 

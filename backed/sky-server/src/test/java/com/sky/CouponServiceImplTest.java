@@ -1,6 +1,7 @@
 package com.sky;
 
 import com.sky.dto.CouponClaimDTO;
+import com.sky.dto.CouponActivityDTO;
 import com.sky.entity.CouponActivity;
 import com.sky.entity.CouponClaimRecord;
 import com.sky.entity.CouponTemplate;
@@ -17,11 +18,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.ArgumentCaptor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -43,6 +46,45 @@ class CouponServiceImplTest {
     private CouponRuleCache ruleCache;
     @InjectMocks
     private CouponServiceImpl couponService;
+
+    @Test
+    void savesDraftActivityWithoutSchedule() {
+        CouponActivityDTO dto = new CouponActivityDTO();
+        dto.setTemplateId(5L);
+        dto.setName("未排期活动");
+        dto.setStockTotal(100);
+        dto.setPerUserLimit(1);
+        when(couponMapper.getTemplate(5L)).thenReturn(template());
+
+        couponService.saveActivity(dto);
+
+        ArgumentCaptor<CouponActivity> activityCaptor = ArgumentCaptor.forClass(CouponActivity.class);
+        verify(couponMapper).insertActivity(activityCaptor.capture());
+        CouponActivity saved = activityCaptor.getValue();
+        assertEquals(0, saved.getStatus());
+        assertNull(saved.getStartTime());
+        assertNull(saved.getEndTime());
+    }
+
+    @Test
+    void rejectsStartingDraftActivityWithoutSchedule() {
+        CouponActivity activity = new CouponActivity();
+        activity.setId(12L);
+        activity.setTemplateId(5L);
+        activity.setStatus(0);
+        activity.setStockRemaining(100);
+        activity.setStartTime(null);
+        activity.setEndTime(null);
+        when(couponMapper.getActivityForUpdate(12L)).thenReturn(activity);
+        when(couponMapper.countPendingClaims(12L)).thenReturn(0);
+        when(couponMapper.getTemplate(5L)).thenReturn(template());
+
+        CouponBusinessException error = assertThrows(
+                CouponBusinessException.class, () -> couponService.updateActivityStatus(12L, 1));
+
+        assertEquals("请先设置有效的活动时间范围", error.getMessage());
+        verify(couponMapper, never()).updateActivityStatus(anyLong(), any());
+    }
 
     @Test
     void claimReturnsPendingStatusAfterDurableReservationIsQueued() {

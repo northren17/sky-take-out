@@ -15,6 +15,8 @@ import com.sky.mapper.*;
 import com.sky.result.PageResult;
 import com.sky.service.CouponOrderPricingService;
 import com.sky.service.OrderService;
+import com.sky.service.PointsService;
+import com.sky.service.SetmealStockService;
 import com.sky.utils.HttpClientUtil;
 import com.sky.utils.WeChatPayUtil;
 import com.sky.vo.OrderPaymentVO;
@@ -28,6 +30,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
@@ -58,6 +61,12 @@ public class OrderServiceImpl implements OrderService {
     @Autowired
     private OrderDetailMapper orderDetailMapper;
     @Autowired
+    private SetmealStockService setmealStockService;
+    @Autowired
+    private PointsService pointsService;
+    @Autowired
+    private TransactionTemplate transactionTemplate;
+    @Autowired
     private ShoppingCartMapper shoppingCartMapper;
     @Autowired
     private AddressBookMapper addressBookMapper;
@@ -86,6 +95,7 @@ public class OrderServiceImpl implements OrderService {
         if (addressBook == null) {
             throw new AddressBookBusinessException(MessageConstant.ADDRESS_BOOK_IS_NULL);
         }
+
         checkOutOfRange(addressBook.getCityName()+addressBook.getDistrictName()+addressBook.getDetail());
         Long userId = BaseContext.getCurrentId();
         ShoppingCart shoppingCart = new ShoppingCart();
@@ -95,6 +105,11 @@ public class OrderServiceImpl implements OrderService {
         List<ShoppingCart> shoppingCartList = shoppingCartMapper.list(shoppingCart);
         if (shoppingCartList == null || shoppingCartList.size() == 0) {
             throw new ShoppingCartBusinessException(MessageConstant.SHOPPING_CART_IS_NULL);
+        }
+        for (ShoppingCart cartItem : shoppingCartList) {
+            if (cartItem.getSetmealId() != null) {
+                setmealStockService.deduct(cartItem.getSetmealId(), cartItem.getNumber());
+            }
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -189,6 +204,16 @@ public class OrderServiceImpl implements OrderService {
 
         return orderSubmitVO;
     }
+
+    private void releaseSetmealStock(Long orderId) {
+        List<OrderDetail> details = orderDetailMapper.getByOrderId(orderId);
+        for (OrderDetail detail : details) {
+            if (detail.getSetmealId() != null) {
+                setmealStockService.restore(detail.getSetmealId(), detail.getNumber());
+            }
+        }
+    }
+
     @Autowired
     private WeChatPayUtil weChatPayUtil;
     /**
@@ -269,6 +294,7 @@ public class OrderServiceImpl implements OrderService {
             throw new OrderBusinessException("订单支付状态已变化，请重试");
         }
         markCouponUsed(ordersDB.getId(), now);
+        pointsService.recordPendingForPaidOrder(ordersDB.getId(), ordersDB.getUserId());
 
         // 发送消息到 MQ，异步处理支付成功后的逻辑（如 WebSocket 通知、统计等）
         rabbitTemplate.convertAndSend(RabbitMQConfiguration.ORDER_EXCHANGE, 
@@ -304,34 +330,167 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
-    private void requestFullRefund(Orders order, LocalDateTime now) throws Exception {
-        OrderRefundRecord previous = orderRefundMapper.getByOrderId(order.getId());
-        if (previous != null) {
-            if (previous.getStatus() == 0) return;
-            if (previous.getStatus() == 1) return;
-            throw new OrderBusinessException("该订单退款申请已失败，请联系商家处理");
+    private RefundSubmission prepareFullRefund(Orders order) {
+        BigDecimal amountRemaining = order.getAmount()
+                .subtract(orderRefundMapper.sumPendingAndSucceededRefundAmounts(order.getId()));
+        if (amountRemaining.signum() <= 0) return null;
+        BigDecimal eligibleAmountRemaining = getEligibleGoodsAmount(order.getId())
+                .subtract(orderRefundMapper.sumPendingAndSucceededEligibleRefundAmounts(order.getId()));
+        return prepareRefund(order, "ORDER_CANCEL:" + order.getId(), amountRemaining,
+                eligibleAmountRemaining);
+    }
+
+    @Override
+    public void requestPartialRefund(OrderRefundDTO orderRefundDTO) throws Exception {
+        if (orderRefundDTO == null || orderRefundDTO.getOrderId() == null ||
+                !StringUtils.hasText(orderRefundDTO.getRequestId()) ||
+                orderRefundDTO.getRequestId().length() > 64 ||
+                orderRefundDTO.getRefundAmount() == null ||
+                orderRefundDTO.getEligibleGoodsRefundAmount() == null) {
+            throw new OrderBusinessException("退款请求参数不完整");
         }
-        String outRefundNo = "RF" + order.getId();
+        BigDecimal refundAmount = normalizeMoney(orderRefundDTO.getRefundAmount());
+        BigDecimal eligibleAmount = normalizeMoney(orderRefundDTO.getEligibleGoodsRefundAmount());
+        if (refundAmount.signum() <= 0 || eligibleAmount.signum() < 0 ||
+                eligibleAmount.compareTo(refundAmount) > 0) {
+            throw new OrderBusinessException("退款金额或商品净实付退款金额无效");
+        }
+        RefundSubmission submission = transactionTemplate.execute(transactionStatus -> {
+            Orders order = orderMapper.getByIdForUpdate(orderRefundDTO.getOrderId());
+            if (order == null) {
+                throw new OrderBusinessException("退款订单不存在");
+            }
+            if (orderRefundMapper.getByRequestId(orderRefundDTO.getRequestId()) != null) {
+                return prepareRefund(order, orderRefundDTO.getRequestId(), refundAmount, eligibleAmount);
+            }
+            if (!Orders.PAID.equals(order.getPayStatus()) ||
+                    Orders.PENDING_PAYMENT.equals(order.getStatus()) ||
+                    Orders.CANCELLED.equals(order.getStatus())) {
+                throw new OrderBusinessException("当前订单状态不允许部分退款");
+            }
+            return prepareRefund(order, orderRefundDTO.getRequestId(), refundAmount, eligibleAmount);
+        });
+        submitRefundIfNew(submission);
+    }
+
+    private RefundSubmission prepareRefund(Orders order, String requestId, BigDecimal refundAmount,
+                                           BigDecimal eligibleGoodsRefundAmount) {
+        OrderRefundRecord previous = orderRefundMapper.getByRequestId(requestId);
+        if (previous != null) {
+            if (!order.getId().equals(previous.getOrderId()) ||
+                    previous.getRefundAmount().compareTo(refundAmount) != 0 ||
+                    previous.getEligibleGoodsRefundAmount().compareTo(eligibleGoodsRefundAmount) != 0) {
+                throw new OrderBusinessException("退款幂等请求号已用于不同退款参数");
+            }
+            if (previous.getStatus() == 2) {
+                throw new OrderBusinessException("该退款请求此前失败，请使用新的请求号重试");
+            }
+            return new RefundSubmission(previous, false);
+        }
+
+        BigDecimal amountRemaining = order.getAmount()
+                .subtract(orderRefundMapper.sumPendingAndSucceededRefundAmounts(order.getId()));
+        BigDecimal eligibleAmountRemaining = getEligibleGoodsAmount(order.getId())
+                .subtract(orderRefundMapper.sumPendingAndSucceededEligibleRefundAmounts(order.getId()));
+        if (refundAmount.compareTo(amountRemaining) == 0 &&
+                eligibleGoodsRefundAmount.compareTo(eligibleAmountRemaining) != 0) {
+            throw new OrderBusinessException("全额退款时必须计入全部剩余商品净实付金额");
+        }
+        if (refundAmount.compareTo(amountRemaining) > 0 ||
+                eligibleGoodsRefundAmount.compareTo(eligibleAmountRemaining) > 0 ||
+                refundAmount.signum() <= 0 || eligibleGoodsRefundAmount.signum() < 0 ||
+                eligibleGoodsRefundAmount.compareTo(refundAmount) > 0) {
+            throw new OrderBusinessException("累计退款金额超过订单剩余可退款金额");
+        }
+        String outRefundNo = "RF" + UUID.randomUUID().toString().replace("-", "");
         OrderRefundRecord refund = new OrderRefundRecord();
         refund.setOutRefundNo(outRefundNo);
+        refund.setRequestId(requestId);
         refund.setOrderId(order.getId());
         refund.setOrderNumber(order.getNumber());
-        refund.setRefundAmount(order.getAmount());
+        refund.setRefundAmount(refundAmount);
+        refund.setEligibleGoodsRefundAmount(eligibleGoodsRefundAmount);
         refund.setStatus(0);
-        orderRefundMapper.insert(refund);
-
-        String responseBody = weChatPayUtil.refund(
-                order.getNumber(), outRefundNo, order.getAmount(), order.getAmount());
-        JSONObject response = JSON.parseObject(responseBody);
-        String refundStatus = response == null ? null : response.getString("status");
-        if (!StringUtils.hasText(refundStatus)) {
-            throw new OrderBusinessException("微信退款响应无状态，退款结果待核查");
+        if (orderRefundMapper.insert(refund) != 1) {
+            throw new OrderBusinessException("保存退款申请失败");
         }
-        orderRefundMapper.updateResponse(refund.getId(), responseBody);
+        return new RefundSubmission(refund, true);
+    }
+
+    private void submitRefundIfNew(RefundSubmission submission) throws Exception {
+        if (submission == null || !submission.isNew()) return;
+        OrderRefundRecord refund = submission.getRefund();
+        Orders order = orderMapper.getByid(refund.getOrderId());
+        if (order == null) throw new OrderBusinessException("退款单关联订单不存在");
+
+        String responseBody;
+        try {
+            responseBody = weChatPayUtil.refund(
+                    order.getNumber(), refund.getOutRefundNo(), refund.getRefundAmount(), order.getAmount());
+        } catch (Exception exception) {
+            persistRefundResponse(refund.getId(), "REQUEST_ERROR: " + exception.getMessage());
+            throw exception;
+        }
+
+        JSONObject response;
+        try {
+            response = JSON.parseObject(responseBody);
+        } catch (RuntimeException exception) {
+            persistRefundResponse(refund.getId(), responseBody);
+            throw exception;
+        }
+        String refundStatus = response == null ? null : response.getString("status");
         if ("SUCCESS".equals(refundStatus)) {
-            completeRefund(refund, now, responseBody);
-        } else if (!"PROCESSING".equals(refundStatus)) {
+            transactionTemplate.execute(transactionStatus -> {
+                OrderRefundRecord lockedRefund = orderRefundMapper.getForUpdate(refund.getOutRefundNo());
+                if (lockedRefund == null) throw new OrderBusinessException("退款申请记录不存在");
+                if (lockedRefund.getStatus() == 0) {
+                    orderRefundMapper.updateResponse(lockedRefund.getId(), responseBody);
+                    completeRefund(lockedRefund, LocalDateTime.now(), responseBody);
+                }
+                return null;
+            });
+            return;
+        }
+        persistRefundResponse(refund.getId(), responseBody == null ? "EMPTY_RESPONSE" : responseBody);
+        if ("PROCESSING".equals(refundStatus)) return;
+        if (!StringUtils.hasText(refundStatus)) {
+            throw new OrderBusinessException("微信退款响应无状态，退款记录已保留待核查");
+        }
+        if ("CLOSED".equals(refundStatus) || "ABNORMAL".equals(refundStatus)) {
+            transactionTemplate.execute(transactionStatus -> {
+                orderRefundMapper.updateStatus(refund.getId(), 2, responseBody);
+                return null;
+            });
             throw new OrderBusinessException("微信退款未受理，退款状态：" + refundStatus);
+        }
+        throw new OrderBusinessException("微信退款返回未知状态，申请已保留待核查：" + refundStatus);
+    }
+
+    private void persistRefundResponse(Long refundId, String responseBody) {
+        transactionTemplate.execute(transactionStatus -> {
+            orderRefundMapper.updateResponse(refundId, responseBody);
+            return null;
+        });
+    }
+
+    private BigDecimal getEligibleGoodsAmount(Long orderId) {
+        OrderCouponSnapshot snapshot = couponMapper.getOrderCouponSnapshot(orderId);
+        if (snapshot == null || snapshot.getItemsAmount() == null || snapshot.getCouponDiscount() == null) {
+            throw new OrderBusinessException("订单缺少商品价格快照，无法安全计算积分退款金额");
+        }
+        BigDecimal eligibleAmount = normalizeMoney(snapshot.getItemsAmount().subtract(snapshot.getCouponDiscount()));
+        if (eligibleAmount.signum() < 0) {
+            throw new OrderBusinessException("订单商品净实付金额无效");
+        }
+        return eligibleAmount;
+    }
+
+    private BigDecimal normalizeMoney(BigDecimal amount) {
+        try {
+            return amount.setScale(2, RoundingMode.UNNECESSARY);
+        } catch (ArithmeticException ex) {
+            throw new OrderBusinessException("金额最多保留两位小数");
         }
     }
 
@@ -366,19 +525,30 @@ public class OrderServiceImpl implements OrderService {
 
     private void completeRefund(OrderRefundRecord refund, LocalDateTime now, String responseBody) {
         if (refund.getStatus() == 1) return;
+        Orders order = orderMapper.getByIdForUpdate(refund.getOrderId());
+        if (order == null) throw new OrderBusinessException("退款单关联订单不存在");
+        if (!Orders.PAID.equals(order.getPayStatus()) && !Orders.REFUND.equals(order.getPayStatus())) {
+            throw new OrderBusinessException("订单支付状态不允许退款完成");
+        }
         if (orderRefundMapper.updateStatus(refund.getId(), 1, responseBody) != 1) {
             throw new OrderBusinessException("更新退款状态失败");
         }
-        Orders order = orderMapper.getByIdForUpdate(refund.getOrderId());
-        if (order == null) throw new OrderBusinessException("退款单关联订单不存在");
-        if (order.getPayStatus().equals(Orders.PAID)) {
+        BigDecimal totalRefunded = orderRefundMapper.sumSucceededRefundAmounts(order.getId());
+        if (totalRefunded.compareTo(order.getAmount()) > 0) {
+            throw new OrderBusinessException("累计成功退款金额超过订单实付金额");
+        }
+        boolean fullyRefunded = totalRefunded.compareTo(order.getAmount()) == 0;
+        if (fullyRefunded && order.getPayStatus().equals(Orders.PAID)) {
             if (orderMapper.markRefunded(order.getId()) != 1) {
                 throw new OrderBusinessException("更新订单退款状态失败");
             }
-        } else if (!order.getPayStatus().equals(Orders.REFUND)) {
-            throw new OrderBusinessException("订单支付状态不允许退款完成");
+        }
+        pointsService.adjustForRefund(refund);
+        if (fullyRefunded && Orders.CANCELLED.equals(order.getStatus())) {
+            releaseSetmealStock(order.getId());
         }
 
+        if (!fullyRefunded) return;
         OrderCouponSnapshot snapshot = couponMapper.getOrderCouponSnapshot(order.getId());
         if (snapshot == null || snapshot.getCouponState() == 0) return;
         if (snapshot.getCouponState() != 2) {
@@ -483,47 +653,49 @@ public class OrderServiceImpl implements OrderService {
      *
      * @param id
      */
-    @Transactional(rollbackFor = Exception.class)
     public void userCancelById(Long id) throws Exception {
         cancelOrder(id, BaseContext.getCurrentId(), "用户取消");
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public void adminCancelById(Long id) throws Exception {
         cancelOrder(id, null, "商家取消");
     }
 
     private void cancelOrder(Long id, Long expectedUserId, String reason) throws Exception {
-        Orders order = orderMapper.getByIdForUpdate(id);
-        if (order == null) throw new OrderBusinessException(MessageConstant.ORDER_NOT_FOUND);
-        if (expectedUserId != null && !expectedUserId.equals(order.getUserId())) {
-            throw new OrderBusinessException(MessageConstant.ORDER_NOT_FOUND);
-        }
-        LocalDateTime now = LocalDateTime.now();
-        if (order.getStatus().equals(Orders.PENDING_PAYMENT) &&
-                order.getPayStatus().equals(Orders.UN_PAID)) {
-            if (orderMapper.cancelPendingPayment(id, order.getVersion(), reason, now) != 1) {
+        RefundSubmission submission = transactionTemplate.execute(transactionStatus -> {
+            Orders order = orderMapper.getByIdForUpdate(id);
+            if (order == null) throw new OrderBusinessException(MessageConstant.ORDER_NOT_FOUND);
+            if (expectedUserId != null && !expectedUserId.equals(order.getUserId())) {
+                throw new OrderBusinessException(MessageConstant.ORDER_NOT_FOUND);
+            }
+            LocalDateTime now = LocalDateTime.now();
+            if (order.getStatus().equals(Orders.PENDING_PAYMENT) &&
+                    order.getPayStatus().equals(Orders.UN_PAID)) {
+                if (orderMapper.cancelPendingPayment(id, order.getVersion(), reason, now) != 1) {
+                    throw new OrderBusinessException("订单状态已变化，请刷新后重试");
+                }
+                releaseSetmealStock(id);
+                releaseCoupon(id, now);
+                return null;
+            }
+            if (!order.getStatus().equals(Orders.TO_BE_CONFIRMED) ||
+                    !order.getPayStatus().equals(Orders.PAID)) {
+                throw new OrderBusinessException(MessageConstant.ORDER_STATUS_ERROR);
+            }
+            Orders cancelled = Orders.builder()
+                    .id(order.getId())
+                    .status(Orders.CANCELLED)
+                    .cancelReason(reason)
+                    .cancelTime(now)
+                    .version(order.getVersion())
+                    .build();
+            if (orderMapper.update(cancelled) != 1) {
                 throw new OrderBusinessException("订单状态已变化，请刷新后重试");
             }
-            releaseCoupon(id, now);
-            return;
-        }
-        if (!order.getStatus().equals(Orders.TO_BE_CONFIRMED) ||
-                !order.getPayStatus().equals(Orders.PAID)) {
-            throw new OrderBusinessException(MessageConstant.ORDER_STATUS_ERROR);
-        }
-        Orders cancelled = Orders.builder()
-                .id(order.getId())
-                .status(Orders.CANCELLED)
-                .cancelReason(reason)
-                .cancelTime(now)
-                .version(order.getVersion())
-                .build();
-        if (orderMapper.update(cancelled) != 1) {
-            throw new OrderBusinessException("订单状态已变化，请刷新后重试");
-        }
-        requestFullRefund(order, now);
+            return prepareFullRefund(order);
+        });
+        submitRefundIfNew(submission);
     }
 
     @Override
@@ -534,6 +706,7 @@ public class OrderServiceImpl implements OrderService {
                 !order.getPayStatus().equals(Orders.UN_PAID)) return;
         LocalDateTime now = LocalDateTime.now();
         if (orderMapper.cancelPendingPayment(orderId, order.getVersion(), "订单超时未支付，自动取消", now) == 1) {
+            releaseSetmealStock(orderId);
             releaseCoupon(orderId, now);
         }
     }
@@ -663,32 +836,28 @@ public class OrderServiceImpl implements OrderService {
      *
      * @param ordersRejectionDTO
      */
-    @Transactional(rollbackFor = Exception.class)
     public void rejection(OrdersRejectionDTO ordersRejectionDTO) throws Exception {
-        // 根据id查询订单
-        Orders ordersDB = orderMapper.getByIdForUpdate(ordersRejectionDTO.getId());
-
-        // 订单只有存在且状态为2（待接单）才可以拒单
-        if (ordersDB == null || !ordersDB.getStatus().equals(Orders.TO_BE_CONFIRMED)) {
-            throw new OrderBusinessException(MessageConstant.ORDER_STATUS_ERROR);
-        }
-
-        if (!ordersDB.getPayStatus().equals(Orders.PAID)) {
-            throw new OrderBusinessException("待接单订单尚未支付，不能按已支付拒单流程处理");
-        }
-        LocalDateTime now = LocalDateTime.now();
-        // 拒单需要退款，根据订单id更新订单状态、拒单原因、取消时间
-        Orders orders = new Orders();
-        orders.setId(ordersDB.getId());
-        orders.setStatus(Orders.CANCELLED);
-        orders.setRejectionReason(ordersRejectionDTO.getRejectionReason());
-        orders.setCancelTime(now);
-        orders.setVersion(ordersDB.getVersion());
-
-        if (orderMapper.update(orders) != 1) {
-            throw new OrderBusinessException("订单状态已变化，请刷新后重试");
-        }
-        requestFullRefund(ordersDB, now);
+        RefundSubmission submission = transactionTemplate.execute(transactionStatus -> {
+            Orders order = orderMapper.getByIdForUpdate(ordersRejectionDTO.getId());
+            if (order == null || !order.getStatus().equals(Orders.TO_BE_CONFIRMED)) {
+                throw new OrderBusinessException(MessageConstant.ORDER_STATUS_ERROR);
+            }
+            if (!order.getPayStatus().equals(Orders.PAID)) {
+                throw new OrderBusinessException("待接单订单尚未支付，不能按已支付拒单流程处理");
+            }
+            LocalDateTime now = LocalDateTime.now();
+            Orders rejected = new Orders();
+            rejected.setId(order.getId());
+            rejected.setStatus(Orders.CANCELLED);
+            rejected.setRejectionReason(ordersRejectionDTO.getRejectionReason());
+            rejected.setCancelTime(now);
+            rejected.setVersion(order.getVersion());
+            if (orderMapper.update(rejected) != 1) {
+                throw new OrderBusinessException("订单状态已变化，请刷新后重试");
+            }
+            return prepareFullRefund(order);
+        });
+        submitRefundIfNew(submission);
     }
     /**
      * 派送订单
@@ -717,23 +886,38 @@ public class OrderServiceImpl implements OrderService {
      *
      * @param id
      */
+    @Transactional(rollbackFor = Exception.class)
     public void complete(Long id) {
-        // 根据id查询订单
-        Orders ordersDB = orderMapper.getByid(id);
+        Orders ordersDB = orderMapper.getByIdForUpdate(id);
 
-        // 校验订单是否存在，并且状态为4
-        if (ordersDB == null || !ordersDB.getStatus().equals(Orders.DELIVERY_IN_PROGRESS)) {
+        if (ordersDB == null || !Orders.DELIVERY_IN_PROGRESS.equals(ordersDB.getStatus()) ||
+                !Orders.PAID.equals(ordersDB.getPayStatus())) {
             throw new OrderBusinessException(MessageConstant.ORDER_STATUS_ERROR);
         }
 
         Orders orders = new Orders();
         orders.setId(ordersDB.getId());
-        // 更新订单状态,状态转为完成
         orders.setStatus(Orders.COMPLETED);
         orders.setDeliveryTime(LocalDateTime.now());
         orders.setVersion(ordersDB.getVersion());
 
-        orderMapper.update(orders);
+        if (orderMapper.update(orders) != 1) {
+            throw new OrderBusinessException("订单状态已变化，请刷新后重试");
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void releasePoints(Long orderId) {
+        Orders order = orderMapper.getByIdForUpdate(orderId);
+        if (order == null || !Orders.COMPLETED.equals(order.getStatus()) ||
+                !Orders.PAID.equals(order.getPayStatus())) {
+            throw new OrderBusinessException("仅已完成且仍为已支付状态的订单可以审核释放积分");
+        }
+        if (orderRefundMapper.countPendingRefunds(orderId) > 0) {
+            throw new OrderBusinessException("订单存在处理中退款，暂不能释放积分");
+        }
+        pointsService.releasePendingPoints(orderId);
     }
     /**
      * 检查客户的收货地址是否超出配送范围
@@ -823,6 +1007,24 @@ public class OrderServiceImpl implements OrderService {
         map.put("orderId", id);
         map.put("content", "订单号：" + orders.getNumber());
         webSocketServer.sendToAllClient(JSON.toJSONString(map));
+    }
+
+    private static class RefundSubmission {
+        private final OrderRefundRecord refund;
+        private final boolean isNew;
+
+        private RefundSubmission(OrderRefundRecord refund, boolean isNew) {
+            this.refund = refund;
+            this.isNew = isNew;
+        }
+
+        private OrderRefundRecord getRefund() {
+            return refund;
+        }
+
+        private boolean isNew() {
+            return isNew;
+        }
     }
 
 }

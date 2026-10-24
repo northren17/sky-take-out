@@ -111,7 +111,7 @@ export default class TabChange extends Vue {
     }
   }
   .active {
-    background-color: #ffc200;
+    background-color: var(--admin-primary);
     font-weight: bold;
   }
   .tab-item:first-child {

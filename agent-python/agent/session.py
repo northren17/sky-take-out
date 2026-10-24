@@ -39,13 +39,12 @@ from agent.events import (
     tool_wire_event,
     wire_event,
 )
-from agent.llm_agent import DeepSeekVoiceAgent, ToolExecutionTimeout
+from agent.llm_agent import QwenVoiceAgent, ToolExecutionTimeout
 from agent.providers.aliyun_tts import AliyunRealtimeTts
 from agent.providers.fun_asr import FunAsrStream
 
 
 logger = logging.getLogger("voice_agent.session")
-
 
 class OutgoingBackpressureError(RuntimeError):
     """The client could not drain the bounded send queue in time."""
@@ -57,6 +56,9 @@ class TtsOperationTimeout(TimeoutError):
 
 class ProviderConnectionError(RuntimeError):
     """A session-wide ASR/TTS connection is no longer usable."""
+
+
+MAX_ASR_RECOVERY_ATTEMPTS = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,8 +120,8 @@ class VoiceSession:
                 from agent.tools import policy_search, web_search
                 from agent.tools.java_business import create_java_business_tools
 
-                agent = DeepSeekVoiceAgent(
-                    api_key=settings.deepseek_api_key.get_secret_value(),
+                agent = QwenVoiceAgent(
+                    api_key=dashscope_key,
                     tools=[
                         *create_java_business_tools(
                             business_client, self.session_id, session_capability
@@ -152,6 +154,7 @@ class VoiceSession:
         self._next_event_seq = 0
         self._last_final_text = ""
         self._last_final_at = float("-inf")
+        self._asr_recovery_attempts = 0
         self._closed = False
 
     @property
@@ -369,6 +372,28 @@ class VoiceSession:
             self._accepted_asr_generation = new_generation
             await self._send(self._event("state.changed", turn_id, state="listening"))
 
+    async def finalize_input(self) -> bool:
+        """Submit the latest recognized partial transcript if ASR has not finalized it."""
+
+        async with self._asr_event_lock:
+            turn = self._active_turn
+            if (
+                self._closed
+                or turn is None
+                or self._input_turn_id != turn.turn_id
+                or turn.final_received
+                or not turn.transcript.strip()
+            ):
+                return False
+            await self._handle_asr_event(
+                TranscriptEvent(
+                    text=turn.transcript.strip(),
+                    final=True,
+                    input_generation=self._accepted_asr_generation,
+                )
+            )
+            return True
+
     async def _new_input_turn(self) -> TurnContext:
         await self._cancel_active(send_events=True, send_listening=False)
         async with self._turn_lock:
@@ -391,9 +416,12 @@ class VoiceSession:
 
     async def _handle_asr_event(self, event: TranscriptEvent | ProviderError) -> None:
         if isinstance(event, ProviderError):
+            if await self._recover_asr_timeout(event):
+                return
             await self._provider_error(event)
             return
 
+        self._asr_recovery_attempts = 0
         turn = self._active_turn
         if not event.final:
             if self._input_turn_id is None:
@@ -430,10 +458,84 @@ class VoiceSession:
         await self._send(
             self._event("stt.final", turn.turn_id, text=event.text)
         )
+        if not event.text.strip():
+            response_text = "抱歉，这次没有听清。请靠近麦克风，再简短清晰地说一次。"
+            turn.response_text = response_text
+            turn.state = TurnState.COMPLETED
+            await self._send(
+                self._event("agent.delta", turn.turn_id, text=response_text)
+            )
+            await self._send(
+                self._event("agent.finished", turn.turn_id, text=response_text)
+            )
+            await self._send(
+                self._event("state.changed", turn.turn_id, state="listening")
+            )
+            return
         self._turn_task = self._track(
             self._run_turn(turn.turn_id, event.text),
             name=f"voice-turn-{turn.turn_id}",
         )
+
+    async def _recover_asr_timeout(self, error: ProviderError) -> bool:
+        if (
+            error.source != "asr"
+            or "timeout" not in error.message.lower()
+            or self._asr_recovery_attempts >= MAX_ASR_RECOVERY_ATTEMPTS
+        ):
+            if (
+                error.source == "asr"
+                and "timeout" in error.message.lower()
+                and self._asr_recovery_attempts >= MAX_ASR_RECOVERY_ATTEMPTS
+            ):
+                logger.error(
+                    "ASR timeout recovery exhausted after %s attempts",
+                    self._asr_recovery_attempts,
+                )
+            return False
+
+        self._asr_recovery_attempts += 1
+        self._accepted_asr_generation = None
+        turn_id = await self._cancel_active(
+            send_events=True, send_listening=False
+        )
+        self._input_turn_id = None
+        self._last_final_text = ""
+        self._last_final_at = float("-inf")
+        try:
+            old_generation = self._asr.input_generation
+            new_generation = await self._asr.restart()
+            if (
+                not isinstance(new_generation, int)
+                or new_generation <= old_generation
+                or new_generation != self._asr.input_generation
+            ):
+                raise ProviderConnectionError(
+                    "ASR recovery did not advance input generation"
+                )
+        except Exception as exc:
+            logger.warning(
+                "ASR timeout recovery failed: error_type=%s",
+                type(exc).__name__,
+            )
+            return False
+
+        self._accepted_asr_generation = new_generation
+        await self._send(
+            self._event(
+                "error",
+                turn_id,
+                source="asr",
+                code="provider_reconnected",
+                message="语音识别连接超时，已重新连接，请再说一次。",
+                recoverable=True,
+            )
+        )
+        await self._send(
+            self._event("state.changed", turn_id, state="listening")
+        )
+        logger.warning("ASR provider timed out; connection recovered")
+        return True
 
     def _is_current(self, turn_id: int) -> bool:
         turn = self._active_turn
@@ -534,7 +636,10 @@ class VoiceSession:
             raise
         except Exception as exc:
             logger.error(
-                "Agent turn %s failed: error_type=%s", turn_id, type(exc).__name__
+                "Agent turn %s failed: error_type=%s status=%s",
+                turn_id,
+                type(exc).__name__,
+                getattr(exc, "status_code", "n/a"),
             )
             await self._fail_turn(
                 turn_id, "agent", "execution_error", "Agent 执行失败"

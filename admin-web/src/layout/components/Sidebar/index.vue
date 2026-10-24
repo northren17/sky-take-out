@@ -14,15 +14,15 @@
       <div v-if="!isCollapse"
            class="sidebar-logo"
       >
-        <img src="@/assets/login/logo.png"
-             alt="苍穹外卖"
+        <img src="@/assets/brand/brand-logo-light.svg"
+             alt="智享云膳"
         >
       </div>
       <div v-else
            class="sidebar-logo-mini"
       >
-        <img src="@/assets/login/mini-logo.png"
-             alt="苍穹外卖"
+        <img src="@/assets/brand/brand-mark.svg"
+             alt="智享云膳"
         >
       </div>
     </div>

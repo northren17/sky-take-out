@@ -1,5 +1,7 @@
 FROM node:22-alpine AS build
 WORKDIR /workspace
+ARG VITE_ENABLE_VOICE_ASSISTANT=true
+ENV VITE_ENABLE_VOICE_ASSISTANT=${VITE_ENABLE_VOICE_ASSISTANT}
 RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY . .

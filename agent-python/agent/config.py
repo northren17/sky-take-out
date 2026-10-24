@@ -30,11 +30,11 @@ TTS_MODEL = "qwen3-tts-flash-realtime"
 TTS_VOICE = "Cherry"
 TTS_SAMPLE_RATE = 24_000
 
-# DeepSeek 通过 OpenAI 兼容协议接入 LangChain。最大输出长度是单轮生成上限，
-# 并不代表语音回答一定会生成这么长；SYSTEM_PROMPT 仍要求回答尽量简短。
-DEEPSEEK_MODEL = "deepseek-v4-flash"
-DEEPSEEK_BASE_URL = "https://api.deepseek.com"
-DEEPSEEK_V4_MAX_TOKENS = 8_192
+# Qwen uses DashScope's OpenAI-compatible endpoint. The same DashScope key is used
+# for ASR, chat completions, and TTS. Output length is a per-turn upper bound.
+QWEN_MODEL = "qwen-plus"
+DASHSCOPE_COMPATIBLE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+QWEN_MAX_TOKENS = 8_192
 
 # Phase 1 reliability limits. Keeping these together makes the complete timeout
 # and backpressure policy reviewable and easy to tune per deployment.
@@ -69,9 +69,8 @@ class Settings(BaseSettings):
     的风险。真正调用供应商 SDK 时，调用方才通过 ``get_secret_value()`` 取值。
 
     Attributes:
-        dashscope_api_key: Fun-ASR 和 Qwen TTS 共用的阿里云百炼 API Key。
+        dashscope_api_key: Fun-ASR、Qwen Chat 和 Qwen TTS 共用的阿里云百炼 API Key。
         dashscope_workspace_id: 可选的百炼 Workspace ID；为空时使用账号默认空间。
-        deepseek_api_key: DeepSeek OpenAI 兼容接口的鉴权密钥。
         zhipu_api_key: 智谱网络搜索密钥；仅在 Agent 实际调用搜索工具时使用。
     """
 
@@ -89,7 +88,6 @@ class Settings(BaseSettings):
         default=None,
         alias="DASHSCOPE_WORKSPACE_ID",
     )
-    deepseek_api_key: SecretStr = Field(alias="DEEPSEEK_API_KEY")
     zhipu_api_key: SecretStr | None = Field(default=None, alias="ZHIPU_API_KEY")
     agent_java_internal_url: str = Field(default="", alias="AGENT_JAVA_INTERNAL_URL")
     agent_allowed_origins: str = Field(

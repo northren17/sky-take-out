@@ -3,6 +3,8 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from dashscope.common.error import InvalidParameter
+
 from agent.events import TranscriptEvent
 from agent.providers.fun_asr import FunAsrStream
 from agent.session import SessionLimits, VoiceSession
@@ -52,6 +54,33 @@ class AsrIsolationTests(unittest.IsolatedAsyncioTestCase):
             event["text"] for event in self.websocket.sent_json
             if event["type"] == event_type and event["turn_id"] == turn_id
         ]
+
+    async def test_empty_final_transcript_returns_clear_result_without_calling_agent(self):
+        await self.asr.emit(self.asr.transcript("", final=True))
+        await wait_until(
+            lambda: any(
+                event["type"] == "agent.finished"
+                for event in self.websocket.sent_json
+            )
+        )
+
+        self.assertEqual(self.agent.calls, [])
+        response = self.transcript_events("agent.delta", 1)
+        self.assertEqual(
+            response,
+            ["抱歉，这次没有听清。请靠近麦克风，再简短清晰地说一次。"],
+        )
+        self.assertEqual(self.session.active_turn.state.value, "completed")
+
+    async def test_finalize_input_submits_recognized_partial_when_asr_final_is_delayed(self):
+        await self.asr.emit(self.asr.transcript("天气怎么样", final=False))
+        await wait_until(lambda: self.session.active_turn is not None)
+
+        self.assertTrue(await self.session.finalize_input())
+        await wait_until(lambda: self.agent.calls == ["天气怎么样"])
+
+        self.assertEqual(self.transcript_events("stt.final", 1), ["天气怎么样"])
+        self.assertFalse(await self.session.finalize_input())
 
     async def test_old_partial_after_new_turn_cannot_change_transcript(self):
         old_generation = await self.cancel_first_input()
@@ -133,6 +162,56 @@ class AsrIsolationTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ProviderReconnectionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_timeout_recovery_restarts_when_sdk_already_stopped_old_stream(self):
+        instances = []
+
+        class FakeRecognition:
+            def __init__(self, **kwargs):
+                self.callback = kwargs["callback"]
+                self.started = False
+                instances.append(self)
+
+            def start(self):
+                self.started = True
+
+            def stop(self):
+                raise InvalidParameter("Speech recognition has stopped.")
+
+            def send_audio_frame(self, _chunk):
+                pass
+
+        with patch("agent.providers.fun_asr.Recognition", FakeRecognition):
+            asr = FunAsrStream(
+                api_key="fake", workspace_id=None, model="fake", sample_rate=16000,
+            )
+            await asr.start()
+            generation = await asr.restart()
+
+        self.assertEqual(generation, 2)
+        self.assertEqual(len(instances), 2)
+        self.assertTrue(instances[1].started)
+        self.assertTrue(asr._started)
+
+    async def test_close_accepts_recognition_already_stopped_by_provider(self):
+        class StoppedRecognition:
+            def __init__(self, **_kwargs):
+                pass
+
+            def start(self):
+                pass
+
+            def stop(self):
+                raise InvalidParameter("Speech recognition has stopped.")
+
+        with patch("agent.providers.fun_asr.Recognition", StoppedRecognition):
+            asr = FunAsrStream(
+                api_key="fake", workspace_id=None, model="fake", sample_rate=16000,
+            )
+            await asr.start()
+            await asr.close()
+
+        self.assertFalse(asr._started)
+
     async def test_old_sdk_callback_after_restart_cannot_reach_new_agent_turn(self):
         instances = []
 

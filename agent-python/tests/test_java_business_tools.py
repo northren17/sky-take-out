@@ -14,6 +14,21 @@ class FakeJavaClient:
             "pageSize": 20,
             "coupons": [],
         }
+        self.recommendations_response = {
+            "tastes": ["微辣"],
+            "dailyBudget": Decimal("50.00"),
+            "spentToday": Decimal("10.00"),
+            "remainingBudget": Decimal("40.00"),
+            "items": [
+                {
+                    "name": "微辣鸡肉饭",
+                    "type": "菜品",
+                    "categoryName": "主食",
+                    "price": Decimal("18.00"),
+                    "matchedTastes": ["微辣"],
+                }
+            ],
+        }
         self.calls = []
         self.error = None
 
@@ -32,6 +47,12 @@ class FakeJavaClient:
         if self.error:
             raise self.error
         return self.coupons_response
+
+    async def recommendations(self, session_id, capability):
+        self.calls.append(("recommendations", session_id, capability))
+        if self.error:
+            raise self.error
+        return self.recommendations_response
 
 
 class JavaBusinessToolTests(unittest.IsolatedAsyncioTestCase):
@@ -54,7 +75,7 @@ class JavaBusinessToolTests(unittest.IsolatedAsyncioTestCase):
                 "items": [],
             },
         ]
-        order_tool, _ = create_java_business_tools(client, "session-1", "cap-1")
+        order_tool, _, _ = create_java_business_tools(client, "session-1", "cap-1")
 
         content, artifact = await order_tool.coroutine(order_number="S-100")
 
@@ -88,7 +109,7 @@ class JavaBusinessToolTests(unittest.IsolatedAsyncioTestCase):
                 }
             ],
         }
-        _, coupon_tool = create_java_business_tools(client, "session-2", "cap-2")
+        _, coupon_tool, _ = create_java_business_tools(client, "session-2", "cap-2")
 
         content, artifact = await coupon_tool.coroutine(page=1, page_size=20, status=0)
 
@@ -100,7 +121,9 @@ class JavaBusinessToolTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_tool_reports_auth_and_service_failures_without_success_fallback(self):
         client = FakeJavaClient()
-        order_tool, coupon_tool = create_java_business_tools(client, "session-3", "cap-3")
+        order_tool, coupon_tool, recommendation_tool = create_java_business_tools(
+            client, "session-3", "cap-3"
+        )
 
         client.error = SessionAuthorizationError("expired")
         _, expired = await order_tool.coroutine(order_number="")
@@ -111,6 +134,24 @@ class JavaBusinessToolTests(unittest.IsolatedAsyncioTestCase):
         _, unavailable = await coupon_tool.coroutine(page=1, page_size=20, status=None)
         self.assertFalse(unavailable["success"])
         self.assertEqual(unavailable["code"], "COUPON_SERVICE_UNAVAILABLE")
+
+        _, unavailable = await recommendation_tool.coroutine()
+        self.assertFalse(unavailable["success"])
+        self.assertEqual(unavailable["code"], "RECOMMENDATION_SERVICE_UNAVAILABLE")
+
+    async def test_recommendation_tool_returns_menu_choices_and_user_budget(self):
+        client = FakeJavaClient()
+        _, _, recommendation_tool = create_java_business_tools(
+            client, "session-4", "cap-4"
+        )
+
+        content, artifact = await recommendation_tool.coroutine()
+
+        self.assertIn("已设置口味：微辣", content)
+        self.assertIn("今日已支付10.00元，剩余额度40.00元", content)
+        self.assertIn("微辣鸡肉饭（菜品，主食），18.00元，符合微辣口味", content)
+        self.assertEqual(artifact["data"]["items"][0]["name"], "微辣鸡肉饭")
+        self.assertEqual(client.calls, [("recommendations", "session-4", "cap-4")])
 
 
 if __name__ == "__main__":

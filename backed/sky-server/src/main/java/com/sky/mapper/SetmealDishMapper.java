@@ -28,6 +28,7 @@ public interface SetmealDishMapper {
      * @param setmealId
      * @return
      */
-    @Select("select * from setmeal_dish where setmeal_id = #{setmealId}")
+    @Select("select sd.*, d.image as image from setmeal_dish sd " +
+            "left join dish d on d.id = sd.dish_id where sd.setmeal_id = #{setmealId}")
     List<SetmealDish> getBySetmealId(Long setmealId);
 }

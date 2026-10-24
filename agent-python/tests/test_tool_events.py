@@ -15,7 +15,7 @@ from agent.events import (
     safe_tool_args,
     tool_wire_event,
 )
-from agent.llm_agent import DeepSeekVoiceAgent, ToolExecutionTimeout
+from agent.llm_agent import QwenVoiceAgent, ToolExecutionTimeout
 from agent.tool_events import LangGraphToolLifecycleAdapter, _result_data
 from agent.tools.ticket_service import TicketService, ticket_lookup
 from tests.test_llm_agent import FakeToolCallingModel
@@ -50,7 +50,7 @@ class ToolLifecycleTests(unittest.IsolatedAsyncioTestCase):
             ]
         )
         events = []
-        result = await self.collect(DeepSeekVoiceAgent(model=model, tools=[lookup]), events)
+        result = await self.collect(QwenVoiceAgent(model=model, tools=[lookup]), events)
         self.assertEqual(result, "done")
         self.assertEqual([event.event_type for event in events], ["tool.called", "tool.finished"])
         self.assertEqual(events[0].call_id, events[1].call_id)
@@ -137,7 +137,7 @@ class ToolLifecycleTests(unittest.IsolatedAsyncioTestCase):
                 ]
             )
             events = []
-            agent = DeepSeekVoiceAgent(
+            agent = QwenVoiceAgent(
                 model=model,
                 tools=[probe],
                 tool_timeout_seconds=0.02 if kind == "timeout" else 1,
@@ -186,7 +186,7 @@ class ToolLifecycleTests(unittest.IsolatedAsyncioTestCase):
             [AIMessage(content="", tool_calls=calls), AIMessage(content="done")]
         )
         events = []
-        await self.collect(DeepSeekVoiceAgent(model=model, tools=[parallel_probe]), events)
+        await self.collect(QwenVoiceAgent(model=model, tools=[parallel_probe]), events)
         called = [event for event in events if event.event_type == "tool.called"]
         self.assertEqual(peak, 2)
         self.assertEqual(len({event.call_id for event in called}), 2)
@@ -218,7 +218,7 @@ class ToolLifecycleTests(unittest.IsolatedAsyncioTestCase):
         result = "".join(
             [
                 chunk
-                async for chunk in DeepSeekVoiceAgent(model=model, tools=[once]).stream(
+                async for chunk in QwenVoiceAgent(model=model, tools=[once]).stream(
                     "question", on_tool_event=broken_reporter
                 )
             ]

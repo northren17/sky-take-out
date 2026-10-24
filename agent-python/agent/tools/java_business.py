@@ -230,4 +230,86 @@ def create_java_business_tools(
             },
         )
 
-    return [order_lookup, coupon_lookup]
+    @tool("dish_recommendations", response_format="content_and_artifact")
+    async def dish_recommendations() -> tuple[str, dict[str, Any]]:
+        """根据当前登录用户已保存的口味偏好、每日餐费限额和今日已支付金额推荐在售菜品或套餐。
+
+        用户询问吃什么、午餐/晚餐推荐、按口味推荐菜品时必须调用此工具。
+        推荐仅来自当前在售菜单，价格已转换为元；如果今日剩余额度不足或无在售商品，
+        工具会明确返回无匹配结果，不得编造或推荐工具未返回的菜品。
+        """
+        try:
+            result = await client.recommendations(session_id, capability)
+        except SessionAuthorizationError:
+            return _tool_result(
+                "语音会话权限已失效，请重新登录后再获取菜品推荐。",
+                success=False,
+                status="authorization_expired",
+                code="SESSION_AUTHORIZATION_EXPIRED",
+            )
+        except InternalAgentError:
+            return _tool_result(
+                "菜品推荐服务暂时不可用，请稍后重试。",
+                success=False,
+                status="service_unavailable",
+                code="RECOMMENDATION_SERVICE_UNAVAILABLE",
+            )
+
+        candidates = []
+        lines = []
+        for item in result["items"]:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or "未命名菜品")
+            kind = str(item.get("type") or "菜品")
+            price = _public_number(item.get("price")) or "价格未知"
+            category = str(item.get("categoryName") or "")
+            matches = [
+                str(taste) for taste in item.get("matchedTastes", [])
+                if isinstance(taste, str)
+            ]
+            candidates.append({
+                "name": name,
+                "type": kind,
+                "price": price,
+                "category": category,
+                "matched_tastes": matches,
+            })
+            match_text = f"，符合{ '、'.join(matches) }口味" if matches else ""
+            category_text = f"，{category}" if category else ""
+            lines.append(f"{name}（{kind}{category_text}），{price}元{match_text}")
+
+        tastes = [str(taste) for taste in result["tastes"] if isinstance(taste, str)]
+        budget = _public_number(result.get("dailyBudget"))
+        spent = _public_number(result.get("spentToday")) or "0"
+        remaining = _public_number(result.get("remainingBudget"))
+        budget_text = (
+            f"今日已支付{spent}元，剩余额度{remaining}元。"
+            if budget is not None and remaining is not None
+            else "尚未设置每日餐费限额。"
+        )
+        taste_text = f"已设置口味：{'、'.join(tastes)}。" if tastes else "尚未设置口味偏好。"
+        if not candidates:
+            message = f"{taste_text}{budget_text}当前没有符合条件的在售菜品或套餐，请到口味与每日预算页面调整设置，或稍后再试。"
+            return _tool_result(
+                message,
+                success=True,
+                status="no_match",
+                code="NO_RECOMMENDATIONS",
+                data={"items": [], "tastes": tastes, "remaining_budget": remaining},
+            )
+        return _tool_result(
+            f"{taste_text}{budget_text}适合你的在售选择：\n" + "\n".join(lines),
+            success=True,
+            status="hit",
+            code="RECOMMENDATIONS_FOUND",
+            data={
+                "items": candidates,
+                "tastes": tastes,
+                "daily_budget": budget,
+                "spent_today": spent,
+                "remaining_budget": remaining,
+            },
+        )
+
+    return [order_lookup, coupon_lookup, dish_recommendations]

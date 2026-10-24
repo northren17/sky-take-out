@@ -28,6 +28,9 @@ public class SetmealVO implements Serializable {
     //套餐价格
     private BigDecimal price;
 
+    //可售库存，-1 表示不限库存
+    private Integer stock;
+
     //状态 0:停用 1:启用
     private Integer status;
 

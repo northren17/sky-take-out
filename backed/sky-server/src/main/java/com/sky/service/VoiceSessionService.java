@@ -26,7 +26,8 @@ import java.util.concurrent.TimeUnit;
 public class VoiceSessionService {
     public static final long TICKET_TTL_SECONDS = 60;
     public static final long SESSION_TTL_SECONDS = 30 * 60;
-    private static final List<String> READ_SCOPES = List.of("orders:read", "coupons:read");
+    private static final List<String> SESSION_SCOPES =
+            List.of("orders:read", "coupons:read", "menu:read");
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private static final String STORE_LOGIN_SESSION_SCRIPT = """
@@ -106,7 +107,7 @@ public class VoiceSessionService {
                 "userId", userId,
                 "loginSessionId", loginSessionId,
                 "audience", "voice-agent",
-                "scopes", READ_SCOPES,
+                "scopes", SESSION_SCOPES,
                 "expiresAt", expiresAt.toEpochMilli()));
         Long created = redisTemplate.execute(issueTicketScript,
                 List.of(userTokenKey(userId), userSessionKey(userId), ticketKey(ticket)),
@@ -148,7 +149,7 @@ public class VoiceSessionService {
                 "userId", userId,
                 "loginSessionId", loginSessionId,
                 "capabilityHash", sha256Hex(capability),
-                "scopes", READ_SCOPES,
+                "scopes", SESSION_SCOPES,
                 "expiresAt", expiresAt.toEpochMilli()));
         Long result = redisTemplate.execute(redeemTicketScript,
                 List.of(ticketKey, userSessionKey(userId), userTokenKey(userId),
@@ -164,18 +165,18 @@ public class VoiceSessionService {
             }
             throw new VoiceSessionException("ticket 无效、已过期或已使用");
         }
-        return new VoiceSessionGrantVO(request.getSessionId(), capability, READ_SCOPES,
+        return new VoiceSessionGrantVO(request.getSessionId(), capability, SESSION_SCOPES,
                 expiresAt, SESSION_TTL_SECONDS);
     }
 
     public VoiceSessionValidationVO validate(String sessionId, String capability) {
         Map<String, Object> session = loadValidSession(sessionId, capability);
-        return new VoiceSessionValidationVO(true, READ_SCOPES,
+        return new VoiceSessionValidationVO(true, SESSION_SCOPES,
                 Instant.ofEpochMilli(number(session.get("expiresAt"))));
     }
 
     public Long authorizeRead(String sessionId, String capability, String requiredScope) {
-        if (!READ_SCOPES.contains(requiredScope)) {
+        if (!SESSION_SCOPES.contains(requiredScope)) {
             throw new VoiceSessionException("语音会话权限范围无效");
         }
         Map<String, Object> session = loadValidSession(sessionId, capability);

@@ -74,9 +74,9 @@ public class WebMvcConfiguration extends WebMvcConfigurationSupport {
         log.info("准备生成接口文档");
         return new OpenAPI()
                 .info(new Info()
-                        .title("苍穹外卖项目接口文档")
+                        .title("智享云膳项目接口文档")
                         .version("2.0")
-                        .description("苍穹外卖项目接口文档"));
+                        .description("智享云膳项目接口文档"));
     }
 
     /**

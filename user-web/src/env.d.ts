@@ -7,6 +7,7 @@ declare module '*.vue' {
 }
 
 interface ImportMetaEnv {
+  readonly VITE_ENABLE_VOICE_ASSISTANT?: string
   /** 请求前缀，默认 /api（走 Vite 代理） */
   readonly VITE_API_BASE_URL: string
   /** 图片地址前缀 */

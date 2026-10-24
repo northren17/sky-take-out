@@ -42,32 +42,34 @@
           </template>
         </el-table-column>
         <el-table-column prop="updateTime" label="最后操作时间" />
-        <el-table-column label="操作" width="160" align="center">
+        <el-table-column
+          label="操作"
+          width="190"
+          fixed="right"
+          align="center"
+          class-name="admin-table-action-column"
+        >
           <template #default="scope">
-            <el-button
-              type="text"
-              size="small"
-              class="blueBug"
-              :class="{ 'disabled-text': scope.row.username === 'admin' }"
-              :disabled="scope.row.username === 'admin'"
-              @click="addEmployeeHandle(scope.row.id, scope.row.username)"
-            >
-              修改
-            </el-button>
-            <el-button
-              :disabled="scope.row.username === 'admin'"
-              type="text"
-              size="small"
-              class="non"
-              :class="{
-                'disabled-text': scope.row.username === 'admin',
-                blueBug: scope.row.status == '0',
-                delBut: scope.row.status != '0'
-              }"
-              @click="statusHandle(scope.row)"
-            >
-              {{ scope.row.status == '1' ? '禁用' : '启用' }}
-            </el-button>
+            <div class="admin-table-actions">
+              <el-button
+                type="primary"
+                plain
+                size="small"
+                :disabled="scope.row.username === 'admin'"
+                @click="addEmployeeHandle(scope.row.id, scope.row.username)"
+              >
+                修改
+              </el-button>
+              <el-button
+                :type="scope.row.status == '1' ? 'warning' : 'success'"
+                plain
+                size="small"
+                :disabled="scope.row.username === 'admin'"
+                @click="statusHandle(scope.row)"
+              >
+                {{ scope.row.status == '1' ? '禁用' : '启用' }}
+              </el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -199,9 +201,3 @@ export default class Employee extends Vue {
   }
 }
 </script>
-
-<style lang="scss" scoped>
-.disabled-text {
-  color: #bac0cd !important;
-}
-</style>

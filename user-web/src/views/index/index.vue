@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { getDiningPreferences, type DiningPreference } from '@/api/modules/user'
 import DishCard from '@/components/DishCard.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { getAddressBookDefault } from '@/api/modules/address'
@@ -13,6 +14,7 @@ import {
 } from '@/api/modules/dish'
 import { DELIVERY_FEE, getImageUrl } from '@/api/request'
 import { SUCCESS_CODE } from '@/constants/business'
+import { listDishReviews, type DishReview } from '@/api/modules/meal'
 import type { AddressBook, Dish, DishItem, Setmeal, SourceDishCategory } from '@/types/api'
 import { fenToYuan, useCartStore } from '@/stores/cart'
 import { useCheckoutStore } from '@/stores/checkout'
@@ -24,17 +26,13 @@ type DishRow = (Dish | Setmeal) & {
   categoryName: string
 }
 
-interface CategorySpotlight {
-  category: SourceDishCategory
-  item?: DishRow
-  itemCount: number
-}
-
 const router = useRouter()
+const route = useRoute()
 const cart = useCartStore()
 const checkout = useCheckoutStore()
 const shop = useShopStore()
 
+const diningPreference = ref<DiningPreference | null>(null)
 const categories = ref<SourceDishCategory[]>([])
 const activeCategoryId = ref<number | 'all'>('all')
 const loadedCategoryIds = ref<number[]>([])
@@ -51,19 +49,141 @@ const selectedFlavors = ref<string[]>([])
 
 const detailVisible = ref(false)
 const detailDish = ref<DishRow | null>(null)
+const detailTransitionBusy = ref(false)
+const sharedTransitionDishKey = ref('')
+let detailOriginElement: HTMLElement | null = null
 const setmealDishes = ref<DishItem[]>([])
+const dishReviews = ref<DishReview[]>([])
+const dishReviewPage = ref(1)
+const hasMoreDishReviews = ref(false)
 const cartVisible = ref(false)
+const activeBannerIndex = ref(0)
+const bannerPaused = ref(false)
+const recommendationTrack = ref<HTMLElement | null>(null)
+const recommendationPaused = ref(false)
+let bannerTimer: number | undefined
+let recommendationTimer: number | undefined
+
+type ViewTransitionDocument = Document & {
+  startViewTransition?: (callback: () => void | Promise<void>) => {
+    updateCallbackDone: Promise<void>
+  }
+}
+
+function dishTransitionKey(row: DishRow): string {
+  return `${row.type}-${row.id}`
+}
+
+async function commitViewTransition(update: () => void) {
+  const startViewTransition = (document as ViewTransitionDocument).startViewTransition
+  if (!startViewTransition || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    update()
+    await nextTick()
+    return
+  }
+  const transition = startViewTransition.call(document, async () => {
+    update()
+    await nextTick()
+  })
+  await transition.updateCallbackDone
+}
+
+const campaignBanners = [
+  {
+    eyebrow: 'FRESHLY PREPARED · JUST FOR YOU',
+    title: '好食材，认真做好每一餐',
+    description: '挑选喜欢的菜品，现点现做，让每一餐都更有滋味。',
+    action: '开始点餐',
+    tone: 'mint',
+  },
+  {
+    eyebrow: 'A GOOD MEAL, A GOOD MOOD',
+    title: '今天想吃点什么？',
+    description: '从热菜到主食，看看为你精选的餐桌灵感。',
+    action: '看看推荐',
+    tone: 'lime',
+  },
+  {
+    eyebrow: 'MADE WITH CARE',
+    title: '忙碌一天，也要好好吃饭',
+    description: '选好美味加入购物车，轻松安排下一餐。',
+    action: '去逛菜单',
+    tone: 'sage',
+  },
+]
 
 const allDishRows = computed(() =>
   categories.value.flatMap((category) => productsByCategory.value[Number(category.id)] ?? []),
 )
 
-const categorySpotlights = computed<CategorySpotlight[]>(() =>
-  categories.value.slice(0, 6).map((category) => {
-    const categoryItems = productsByCategory.value[Number(category.id)] ?? []
-    return { category, item: categoryItems[0], itemCount: categoryItems.length }
-  }),
-)
+const isOrderingPage = computed(() => route.hash === '#menu')
+
+function tasteMatchScore(row: DishRow): number {
+  const searchableText = [row.name, row.description, row.categoryName]
+    .map((value) => String(value ?? '').toLocaleLowerCase())
+    .join(' ')
+  return (diningPreference.value?.tastes ?? []).reduce((score, taste) => {
+    const keywords: Record<string, string[]> = {
+      清淡: ['清淡', '蒸', '煮', '白灼'],
+      微辣: ['微辣', '小辣'],
+      中辣: ['中辣', '香辣'],
+      重辣: ['重辣', '特辣', '麻辣'],
+      甜口: ['甜', '糖醋', '蜜汁'],
+      少油: ['少油', '清蒸', '白灼'],
+      素食: ['素', '蔬菜', '菌菇', '豆腐'],
+    }
+    const matched = (keywords[taste] ?? [taste]).some((keyword) =>
+      searchableText.includes(keyword.toLocaleLowerCase()),
+    )
+    return score + Number(matched)
+  }, 0)
+}
+
+const recommendedRows = computed(() => {
+  const preference = diningPreference.value
+  if (preference?.dailyBudget !== null && preference?.dailyBudget !== undefined) {
+    const remainingBudget = Number(preference.remainingBudget ?? 0)
+    const budgetRows = allDishRows.value.filter(
+      (row) => fenToYuan(Number(row.price ?? 0)) <= remainingBudget,
+    )
+    return [...budgetRows]
+      .sort((left, right) => tasteMatchScore(right) - tasteMatchScore(left))
+      .slice(0, 12)
+  }
+  return (() => {
+    const firstFromEachCategory = categories.value
+      .map((category) => productsByCategory.value[categoryKey(category)]?.[0])
+      .filter((row): row is DishRow => Boolean(row))
+    const selectedIds = new Set(
+      firstFromEachCategory.map((row) => `${row.type}-${row.id}`),
+    )
+    const remainingRows = allDishRows.value.filter(
+      (row) => !selectedIds.has(`${row.type}-${row.id}`),
+    )
+    return [...firstFromEachCategory, ...remainingRows].slice(0, 12)
+  })()
+})
+
+function hasTasteMatch(row: DishRow): boolean {
+  return tasteMatchScore(row) > 0
+}
+
+function openDiningPreferences() {
+  void router.push('/dining-preferences')
+}
+
+async function loadDiningPreferences() {
+  try {
+    const response = await getDiningPreferences()
+    if (response.code !== SUCCESS_CODE || !response.data) {
+      throw new Error(response.msg || '读取口味与预算失败')
+    }
+    diningPreference.value = response.data
+  } catch {
+    diningPreference.value = null
+    ElMessage.warning('读取口味与预算失败，请确认已部署偏好接口并执行数据库迁移')
+  }
+}
 
 const visibleRows = computed(() => {
   const rows =
@@ -117,6 +237,13 @@ function hasFlavor(row: DishRow): boolean {
 
 function priceText(row: DishRow): string {
   return fenToYuan(Number(row.price ?? 0)).toFixed(2)
+}
+
+function isNewProduct(row: DishRow): boolean {
+  if (!row.updateTime) return false
+  const updatedAt = Date.parse(row.updateTime)
+  const age = Date.now() - updatedAt
+  return Number.isFinite(updatedAt) && age >= 0 && age <= 7 * 24 * 60 * 60 * 1000
 }
 
 async function loadCategory(category: SourceDishCategory) {
@@ -183,9 +310,30 @@ async function selectCategory(id: number | 'all') {
   }
 }
 
-async function selectSpotlight(category: SourceDishCategory) {
-  await selectCategory(categoryKey(category))
-  document.querySelector('#menu')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+async function goOrdering() {
+  await router.push({ path: '/index', hash: '#menu' })
+}
+
+function setActiveBanner(index: number) {
+  activeBannerIndex.value = (index + campaignBanners.length) % campaignBanners.length
+}
+
+function moveBanner(direction: number) {
+  setActiveBanner(activeBannerIndex.value + direction)
+}
+
+function scrollRecommendations(direction: number) {
+  const track = recommendationTrack.value
+  if (!track) return
+  const card = track.querySelector<HTMLElement>('.recommendation-card')
+  const gap = Number.parseFloat(getComputedStyle(track).columnGap) || 18
+  const step = card ? card.getBoundingClientRect().width + gap : track.clientWidth * 0.7
+  const atEnd = track.scrollLeft + track.clientWidth >= track.scrollWidth - 8
+  if (direction > 0 && atEnd) {
+    track.scrollTo({ left: 0, behavior: 'smooth' })
+    return
+  }
+  track.scrollBy({ left: step * direction, behavior: 'smooth' })
 }
 
 function goAddress() {
@@ -318,10 +466,39 @@ async function confirmFlavor() {
 }
 
 async function openDetail(row: DishRow) {
-  detailDish.value = row
-  detailVisible.value = true
+  if (detailTransitionBusy.value || detailVisible.value) return
+  detailTransitionBusy.value = true
+  const transitionKey = dishTransitionKey(row)
+  sharedTransitionDishKey.value = transitionKey
+  await nextTick()
+  await commitViewTransition(() => {
+    detailDish.value = row
+    detailVisible.value = true
+    sharedTransitionDishKey.value = ''
+  })
+  detailOriginElement = document.querySelector<HTMLElement>(
+    `[data-dish-transition-key="${transitionKey}"]`,
+  )
+  detailOriginElement =
+    detailOriginElement?.querySelector<HTMLElement>('button') ?? detailOriginElement
+  detailTransitionBusy.value = false
   setmealDishes.value = []
-  if (row.type !== 2) return
+  dishReviews.value = []
+  dishReviewPage.value = 1
+  hasMoreDishReviews.value = false
+  if (row.type === 1) {
+    try {
+      const response = await listDishReviews(Number(row.id), dishReviewPage.value, 3)
+      if (response.code === SUCCESS_CODE) {
+        dishReviews.value = response.data ?? []
+        hasMoreDishReviews.value = dishReviews.value.length === 3
+      }
+    } catch {
+      // 请求层已提示
+    }
+    return
+  }
+
   try {
     const res = await setmealDishList(Number(row.id))
     if (res.code === SUCCESS_CODE) setmealDishes.value = (res.data ?? []) as DishItem[]
@@ -330,10 +507,42 @@ async function openDetail(row: DishRow) {
   }
 }
 
+async function closeDetail() {
+  const row = detailDish.value
+  if (!row || detailTransitionBusy.value) return
+  detailTransitionBusy.value = true
+  const transitionKey = dishTransitionKey(row)
+  await commitViewTransition(() => {
+    detailVisible.value = false
+    detailDish.value = null
+    sharedTransitionDishKey.value = transitionKey
+  })
+  detailOriginElement?.focus()
+  detailOriginElement = null
+  detailTransitionBusy.value = false
+}
+
+function handleDetailKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && detailVisible.value) void closeDetail()
+}
+
+async function loadMoreDishReviews() {
+  const row = detailDish.value
+  if (!row || row.type !== 1 || !hasMoreDishReviews.value) return
+  const nextPage = dishReviewPage.value + 1
+  const response = await listDishReviews(Number(row.id), nextPage, 3)
+  if (response.code === SUCCESS_CODE) {
+    const nextReviews = response.data ?? []
+    dishReviews.value = [...dishReviews.value, ...nextReviews]
+    dishReviewPage.value = nextPage
+    hasMoreDishReviews.value = nextReviews.length === 3
+  }
+}
+
 async function addFromDetail() {
   const row = detailDish.value
   if (!row) return
-  detailVisible.value = false
+  await closeDetail()
   await quickAdd(row)
 }
 
@@ -370,14 +579,84 @@ async function clearCart() {
 }
 
 onMounted(async () => {
+  window.addEventListener('keydown', handleDetailKeydown)
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  if (!reduceMotion) {
+    bannerTimer = window.setInterval(() => {
+      if (!bannerPaused.value && !isOrderingPage.value) moveBanner(1)
+    }, 6000)
+    recommendationTimer = window.setInterval(() => {
+      if (
+        !recommendationPaused.value &&
+        !isOrderingPage.value &&
+        recommendedRows.value.length > 1
+      ) {
+        scrollRecommendations(1)
+      }
+    }, 4500)
+  }
   await Promise.all([shop.fetchAll(), cart.fetchCart(), loadDeliveryAddress()])
-  await loadCategories()
+  await Promise.all([loadCategories(), loadDiningPreferences()])
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleDetailKeydown)
+  if (bannerTimer !== undefined) window.clearInterval(bannerTimer)
+  if (recommendationTimer !== undefined) window.clearInterval(recommendationTimer)
 })
 </script>
 
 <template>
   <div class="storefront">
-    <section class="store-toolbar" aria-label="配送、搜索和购物车">
+    <section
+      v-if="!isOrderingPage"
+      class="campaign-banner"
+      :class="`is-${campaignBanners[activeBannerIndex].tone}`"
+      aria-label="活动推荐"
+      @mouseenter="bannerPaused = true"
+      @mouseleave="bannerPaused = false"
+      @focusin="bannerPaused = true"
+      @focusout="bannerPaused = false"
+    >
+      <div class="campaign-copy">
+        <p class="campaign-eyebrow">{{ campaignBanners[activeBannerIndex].eyebrow }}</p>
+        <h1>{{ campaignBanners[activeBannerIndex].title }}</h1>
+        <p class="campaign-description">{{ campaignBanners[activeBannerIndex].description }}</p>
+        <button class="campaign-action" type="button" @click="goOrdering">
+          {{ campaignBanners[activeBannerIndex].action }}
+          <el-icon aria-hidden="true"><ArrowRight /></el-icon>
+        </button>
+      </div>
+      <div class="campaign-art" aria-hidden="true">
+        <span class="campaign-orbit orbit-one" />
+        <span class="campaign-orbit orbit-two" />
+        <span class="campaign-plate"><el-icon><Dish /></el-icon></span>
+        <span class="campaign-leaf leaf-one" />
+        <span class="campaign-leaf leaf-two" />
+        <span class="campaign-note">FRESH<br />& DAILY</span>
+      </div>
+      <div class="campaign-controls">
+        <button type="button" aria-label="上一条活动" @click="moveBanner(-1)">
+          <el-icon aria-hidden="true"><ArrowLeft /></el-icon>
+        </button>
+        <button type="button" aria-label="下一条活动" @click="moveBanner(1)">
+          <el-icon aria-hidden="true"><ArrowRight /></el-icon>
+        </button>
+      </div>
+      <div class="campaign-indicators" role="group" aria-label="选择活动">
+        <button
+          v-for="(banner, index) in campaignBanners"
+          :key="banner.title"
+          type="button"
+          :class="{ active: activeBannerIndex === index }"
+          :aria-label="`第 ${index + 1} 条活动`"
+          :aria-pressed="activeBannerIndex === index"
+          @click="setActiveBanner(index)"
+        />
+      </div>
+    </section>
+
+    <section v-if="isOrderingPage" class="store-toolbar" aria-label="配送、搜索和购物车">
       <button class="delivery-address" type="button" @click="goAddress">
         <el-icon aria-hidden="true"><Location /></el-icon>
         <span class="delivery-copy">
@@ -447,48 +726,137 @@ onMounted(async () => {
       </button>
     </section>
 
-    <section v-if="categorySpotlights.length" class="spotlight-section" aria-labelledby="spotlight-title">
-      <div class="section-heading compact-heading">
+    <section
+      v-if="!isOrderingPage"
+      class="recommendations-section"
+      aria-labelledby="recommendations-title"
+    >
+      <div class="section-heading">
         <div>
-          <p class="section-eyebrow">EXPLORE THE MENU</p>
-          <h1 id="spotlight-title">逛逛分类</h1>
+          <p class="section-eyebrow">SMART PICKS · MADE FRESH</p>
+          <h2 id="recommendations-title">口味与预算推荐</h2>
+          <p class="menu-subtitle">
+            {{
+              diningPreference?.dailyBudget == null
+                ? '设置口味和每日限额，发现更适合你的菜品'
+                : `今日已付 ￥${Number(diningPreference.spentToday).toFixed(2)}，按剩余额度为你筛选`
+            }}
+          </p>
         </div>
-        <span class="section-count">{{ categories.length }} 个分类</span>
+        <div class="recommendation-heading-actions">
+          <button class="browse-menu-button" type="button" @click="openDiningPreferences">
+            设置偏好
+            <el-icon aria-hidden="true"><ArrowRight /></el-icon>
+          </button>
+          <button
+            class="carousel-control"
+            type="button"
+            aria-label="上一组推荐菜品"
+            :disabled="recommendedRows.length < 2"
+            @click="scrollRecommendations(-1)"
+          >
+            <el-icon aria-hidden="true"><ArrowLeft /></el-icon>
+          </button>
+          <button
+            class="carousel-control"
+            type="button"
+            aria-label="下一组推荐菜品"
+            :disabled="recommendedRows.length < 2"
+            @click="scrollRecommendations(1)"
+          >
+            <el-icon aria-hidden="true"><ArrowRight /></el-icon>
+          </button>
+          <button class="browse-menu-button" type="button" @click="goOrdering">
+            全部菜品
+            <el-icon aria-hidden="true"><ArrowRight /></el-icon>
+          </button>
+        </div>
       </div>
 
-      <div class="spotlight-row">
-        <button
-          v-for="spotlight in categorySpotlights"
-          :key="spotlight.category.id ?? spotlight.category.name"
-          class="spotlight-card"
-          type="button"
-          @click="selectSpotlight(spotlight.category)"
+      <div
+        v-loading="loadingDish"
+        class="recommendation-results"
+        @mouseenter="recommendationPaused = true"
+        @mouseleave="recommendationPaused = false"
+        @focusin="recommendationPaused = true"
+        @focusout="recommendationPaused = false"
+      >
+        <div
+          v-if="recommendedRows.length"
+          ref="recommendationTrack"
+          class="recommendation-track"
+          aria-label="推荐菜品，可横向滑动"
         >
-          <span class="spotlight-image">
-            <img
-              v-if="spotlight.item && getImageUrl(spotlight.item.image)"
-              v-image-fallback
-              :src="getImageUrl(spotlight.item.image)"
-              :alt="String(spotlight.item.name ?? '')"
-              loading="lazy"
-            />
-            <span v-else class="spotlight-placeholder" aria-hidden="true">
-              <el-icon><Dish /></el-icon>
-            </span>
-          </span>
-          <span class="spotlight-copy">
-            <strong>{{ spotlight.category.name }}</strong>
-            <small>
-              {{ spotlight.item?.name ?? '查看分类' }}
-              <template v-if="spotlight.itemCount"> · {{ spotlight.itemCount }} 款</template>
-            </small>
-          </span>
-          <el-icon class="spotlight-arrow" aria-hidden="true"><ArrowRight /></el-icon>
-        </button>
+          <article
+            v-for="row in recommendedRows"
+            :key="`recommend-${row.type}-${row.id}`"
+            class="recommendation-card"
+            :data-dish-transition-key="dishTransitionKey(row)"
+            :style="{
+              viewTransitionName:
+                sharedTransitionDishKey === dishTransitionKey(row)
+                  ? 'dish-detail-shared'
+                  : undefined,
+            }"
+          >
+            <button class="recommendation-image" type="button" @click="openDetail(row)">
+              <img
+                v-if="getImageUrl(row.image)"
+                v-image-fallback
+                :src="getImageUrl(row.image)"
+                :alt="String(row.name ?? '')"
+                loading="lazy"
+              />
+              <span v-else class="recommendation-image-placeholder">
+                <el-icon aria-hidden="true"><Dish /></el-icon>
+                <span>本店现做</span>
+              </span>
+              <span class="recommendation-badge">
+                {{ hasTasteMatch(row) ? '口味匹配' : isNewProduct(row) ? '新品' : '预算内精选' }}
+              </span>
+            </button>
+            <div class="recommendation-card-body">
+              <div class="recommendation-card-heading">
+                <div>
+                  <span class="recommendation-category">{{ row.categoryName }}</span>
+                  <h3>{{ row.name }}</h3>
+                </div>
+                <span class="recommendation-sales">销量统计待接入</span>
+              </div>
+              <p class="recommendation-description">{{ row.description || '本店用心制作，现点现做' }}</p>
+              <div class="recommendation-card-footer">
+                <p class="recommendation-price">
+                  <small>￥</small>{{ priceText(row) }}
+                </p>
+                <button
+                  class="recommendation-add"
+                  type="button"
+                  :disabled="shop.isClosed || cart.loading"
+                  @click="hasFlavor(row) ? openFlavorDialog(row) : quickAdd(row)"
+                >
+                  <el-icon aria-hidden="true"><Plus /></el-icon>
+                  {{ hasFlavor(row) ? '选规格' : countOf(row) ? `已选 ${countOf(row)}` : '加购' }}
+                </button>
+              </div>
+            </div>
+          </article>
+        </div>
+        <EmptyState
+          v-else-if="!loadingDish"
+          :text="
+            diningPreference?.dailyBudget != null && Number(diningPreference.remainingBudget) <= 0
+              ? '今日餐费限额已用完'
+              : diningPreference?.dailyBudget != null
+                ? '当前没有符合剩余额度的菜品'
+                : '暂时没有可推荐的菜品'
+          "
+          image="/static/imgDefault.png"
+          :image-size="96"
+        />
       </div>
     </section>
 
-    <section id="menu" class="menu-section" aria-labelledby="menu-title">
+    <section v-if="isOrderingPage" id="menu" class="menu-section" aria-labelledby="menu-title">
       <div class="section-heading">
         <div>
           <p class="section-eyebrow">COOKED TO ORDER</p>
@@ -525,8 +893,11 @@ onMounted(async () => {
       <div v-loading="loadingDish" class="menu-results">
         <div v-if="visibleRows.length" class="dish-grid">
           <DishCard
-            v-for="row in visibleRows"
+            v-for="(row, index) in visibleRows"
             :key="`${row.type}-${row.id}`"
+            class="dish-enter"
+            :style="{ '--dish-enter-delay': `${Math.min(index, 7) * 45}ms` }"
+            :data-dish-transition-key="dishTransitionKey(row)"
             :name="String(row.name ?? '')"
             :description="String(row.description ?? '')"
             :image="getImageUrl(row.image)"
@@ -536,6 +907,7 @@ onMounted(async () => {
             :category="row.categoryName"
             :disabled="shop.isClosed"
             :loading="cart.loading"
+            :shared-transition="sharedTransitionDishKey === dishTransitionKey(row)"
             @open-detail="openDetail(row)"
             @choose-flavor="openFlavorDialog(row)"
             @add="quickAdd(row)"
@@ -676,35 +1048,101 @@ onMounted(async () => {
       </div>
     </el-dialog>
 
-    <el-dialog v-model="detailVisible" :title="String(detailDish?.name ?? '')" width="560px">
-      <div v-if="detailDish" class="dish-detail">
-        <img
-          v-if="getImageUrl(detailDish.image)"
-          v-image-fallback
-          :src="getImageUrl(detailDish.image)"
-          :alt="String(detailDish.name ?? '')"
-        />
-        <p>{{ detailDish.description || '本店现做' }}</p>
-        <div v-if="detailDish.type === 2" class="setmeal-contents">
-          <h3>套餐包含</h3>
-          <div v-for="(dish, index) in setmealDishes" :key="index">
-            <span>{{ dish.name }} × {{ dish.copies }}</span>
-            <small>{{ dish.description }}</small>
+    <Teleport to="body">
+      <section
+        v-if="detailVisible && detailDish"
+        class="dish-detail-page"
+        aria-labelledby="dish-detail-title"
+        :style="{ viewTransitionName: 'dish-detail-shared' }"
+      >
+        <div class="dish-detail-shell">
+          <header class="dish-detail-header">
+            <button class="detail-back-button" type="button" @click="closeDetail">
+              <el-icon aria-hidden="true"><ArrowLeft /></el-icon>
+              <span>返回菜单</span>
+            </button>
+            <span class="detail-category">{{ detailDish.categoryName }}</span>
+          </header>
+          <div class="dish-detail-scroll">
+            <article class="dish-detail-content">
+              <img
+                v-if="getImageUrl(detailDish.image)"
+                v-image-fallback
+                class="dish-detail-hero"
+                :src="getImageUrl(detailDish.image)"
+                :alt="String(detailDish.name ?? '')"
+              />
+              <div v-else class="dish-detail-hero dish-detail-placeholder">
+                {{ String(detailDish.name ?? '').slice(0, 2) }}
+              </div>
+              <div class="dish-detail-copy">
+                <p class="detail-eyebrow">{{ detailDish.type === 2 ? '精选套餐' : '现点现做' }}</p>
+                <h1 id="dish-detail-title">{{ detailDish.name }}</h1>
+                <p class="dish-detail-description">
+                  {{ detailDish.description || '本店现做' }}
+                </p>
+                <div v-if="detailDish.type === 2" class="setmeal-contents">
+                  <h3>套餐包含</h3>
+                  <div v-for="(dish, index) in setmealDishes" :key="index">
+                    <span>{{ dish.name }} × {{ dish.copies }}</span>
+                    <small>{{ dish.description }}</small>
+                  </div>
+                </div>
+                <section v-else class="dish-review-preview">
+                  <div class="review-preview-heading">
+                    <h3>用户评价</h3>
+                    <span>{{ dishReviews.length }} 条评价</span>
+                  </div>
+                  <article
+                    v-for="review in dishReviews"
+                    :key="review.reviewId"
+                    class="review-preview-card"
+                  >
+                    <div>
+                      <strong>{{ review.userName }}</strong>
+                      <el-rate :model-value="review.rating" disabled size="small" />
+                    </div>
+                    <p>{{ review.content || '用户暂未填写文字评价' }}</p>
+                    <div v-if="review.images?.length" class="review-preview-images">
+                      <img
+                        v-for="image in review.images"
+                        :key="image.imageUrl"
+                        :src="getImageUrl(image.imageUrl)"
+                        alt="评价图片"
+                      />
+                    </div>
+                  </article>
+                  <el-empty
+                    v-if="dishReviews.length === 0"
+                    description="暂无菜品评价"
+                    :image-size="54"
+                  />
+                  <el-button
+                    v-if="hasMoreDishReviews"
+                    class="more-reviews-button"
+                    text
+                    @click="loadMoreDishReviews"
+                  >
+                    加载更多评价
+                  </el-button>
+                </section>
+              </div>
+            </article>
           </div>
+          <footer class="dish-detail-footer">
+            <strong>￥{{ priceText(detailDish) }}</strong>
+            <button
+              class="checkout-button"
+              type="button"
+              :disabled="shop.isClosed || cart.loading || detailTransitionBusy"
+              @click="addFromDetail"
+            >
+              {{ hasFlavor(detailDish) ? '选择规格' : '加入购物车' }}
+            </button>
+          </footer>
         </div>
-        <div class="dialog-footer">
-          <strong>￥{{ priceText(detailDish) }}</strong>
-          <button
-            class="checkout-button"
-            type="button"
-            :disabled="shop.isClosed || cart.loading"
-            @click="addFromDetail"
-          >
-            {{ hasFlavor(detailDish) ? '选择规格' : '加入购物车' }}
-          </button>
-        </div>
-      </div>
-    </el-dialog>
+      </section>
+    </Teleport>
   </div>
 </template>
 
@@ -716,6 +1154,230 @@ onMounted(async () => {
   padding-bottom: 112px;
   margin-inline: auto;
   color: var(--sky-text);
+}
+
+.campaign-banner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 264px;
+  padding: 38px 54px;
+  overflow: hidden;
+  border: 1px solid #d7ece3;
+  border-radius: 22px;
+  background:
+    radial-gradient(ellipse at 80% 24%, rgb(255 255 255 / 68%), transparent 28%),
+    linear-gradient(112deg, #e8f6ee 0%, #d9eee2 54%, #f4f4dd 100%);
+  box-shadow: 0 12px 32px rgb(27 88 63 / 8%);
+  transition: background 400ms ease;
+}
+
+.campaign-banner.is-lime {
+  border-color: #e5eccb;
+  background:
+    radial-gradient(ellipse at 80% 24%, rgb(255 255 255 / 68%), transparent 28%),
+    linear-gradient(112deg, #f2f5df 0%, #e6f0d4 54%, #d8ecdf 100%);
+}
+
+.campaign-banner.is-sage {
+  border-color: #d9e9df;
+  background:
+    radial-gradient(ellipse at 80% 24%, rgb(255 255 255 / 68%), transparent 28%),
+    linear-gradient(112deg, #e6f1e9 0%, #d7eae1 54%, #edf1df 100%);
+}
+
+.campaign-copy {
+  position: relative;
+  z-index: 2;
+  max-width: min(58%, 620px);
+}
+
+.campaign-eyebrow {
+  margin-bottom: 12px;
+  color: var(--sky-primary);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.14em;
+}
+
+.campaign-copy h1 {
+  max-width: 18ch;
+  color: #174b3d;
+  font-size: clamp(28px, 3vw, 42px);
+  font-weight: 750;
+  letter-spacing: -0.045em;
+  line-height: 1.18;
+}
+
+.campaign-description {
+  max-width: 42ch;
+  margin-top: 12px;
+  color: #557369;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.campaign-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  padding: 0 18px;
+  margin-top: 22px;
+  border-radius: var(--sky-radius-pill);
+  background: var(--sky-primary);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 650;
+  transition: background 160ms ease, transform 300ms var(--sky-press-release);
+}
+
+.campaign-action:hover {
+  background: var(--sky-primary-dark);
+  transform: translateY(-1px);
+}
+
+.campaign-art {
+  position: absolute;
+  top: 50%;
+  right: 12%;
+  width: 330px;
+  height: 230px;
+  transform: translateY(-50%);
+}
+
+.campaign-orbit {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border: 1px solid rgb(20 125 105 / 15%);
+  border-radius: 50%;
+  transform: translate(-50%, -50%) rotate(-18deg);
+}
+
+.orbit-one {
+  width: 278px;
+  height: 178px;
+}
+
+.orbit-two {
+  width: 224px;
+  height: 224px;
+}
+
+.campaign-plate {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  width: 142px;
+  height: 142px;
+  place-items: center;
+  border: 10px solid rgb(255 255 255 / 82%);
+  border-radius: 50%;
+  background: linear-gradient(145deg, #fff 0%, #f7e9ca 100%);
+  box-shadow: 0 16px 34px rgb(42 98 73 / 18%), inset 0 0 0 1px #e5ddc8;
+  color: #c18e3b;
+  font-size: 52px;
+  transform: translate(-50%, -50%) rotate(-12deg);
+}
+
+.campaign-plate .el-icon {
+  filter: drop-shadow(0 4px 3px rgb(117 96 51 / 16%));
+}
+
+.campaign-leaf {
+  position: absolute;
+  width: 36px;
+  height: 17px;
+  border-radius: 100% 0 100% 0;
+  background: #64a884;
+  box-shadow: inset -4px -2px 0 rgb(17 93 64 / 12%);
+}
+
+.leaf-one {
+  top: 25px;
+  right: 68px;
+  transform: rotate(-22deg);
+}
+
+.leaf-two {
+  bottom: 28px;
+  left: 28px;
+  background: #a6bc5d;
+  transform: rotate(24deg);
+}
+
+.campaign-note {
+  position: absolute;
+  right: 12px;
+  bottom: 26px;
+  display: grid;
+  width: 58px;
+  height: 58px;
+  place-items: center;
+  border: 1px solid rgb(20 125 105 / 24%);
+  border-radius: 50%;
+  color: var(--sky-primary);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  line-height: 1.25;
+  text-align: center;
+  transform: rotate(10deg);
+}
+
+.campaign-controls {
+  position: absolute;
+  right: 24px;
+  bottom: 20px;
+  display: flex;
+  gap: 7px;
+}
+
+.campaign-controls button,
+.carousel-control {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgb(20 125 105 / 20%);
+  border-radius: 50%;
+  background: rgb(255 255 255 / 72%);
+  color: var(--sky-primary);
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease,
+    transform 300ms var(--sky-press-release);
+}
+
+.campaign-controls button:hover,
+.carousel-control:hover:not(:disabled) {
+  border-color: var(--sky-primary);
+  background: var(--sky-primary);
+  color: #fff;
+}
+
+.campaign-indicators {
+  position: absolute;
+  bottom: 31px;
+  left: 54px;
+  display: flex;
+  gap: 6px;
+}
+
+.campaign-indicators button {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border-radius: var(--sky-radius-pill);
+  background: rgb(20 125 105 / 25%);
+  transition: width 180ms ease, background 180ms ease;
+}
+
+.campaign-indicators button.active {
+  width: 22px;
+  background: var(--sky-primary);
 }
 
 .store-toolbar {
@@ -895,7 +1557,7 @@ onMounted(async () => {
   font-size: 12px;
   font-weight: 650;
   white-space: nowrap;
-  transition: background 160ms ease, transform 160ms ease;
+  transition: background 160ms ease, transform 300ms var(--sky-press-release);
 }
 
 .toolbar-cart:hover {
@@ -925,8 +1587,8 @@ onMounted(async () => {
   line-height: 1;
 }
 
-.spotlight-section {
-  margin-top: 28px;
+.recommendations-section {
+  margin-top: 34px;
 }
 
 .section-heading {
@@ -958,91 +1620,233 @@ onMounted(async () => {
   white-space: nowrap;
 }
 
-.spotlight-row {
-  display: grid;
-  grid-auto-columns: minmax(145px, 1fr);
-  grid-auto-flow: column;
-  gap: 12px;
-  margin-top: 14px;
+.recommendation-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.carousel-control:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.browse-menu-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 0 13px;
+  border: 1px solid var(--sky-border);
+  border-radius: var(--sky-radius);
+  background: var(--sky-surface);
+  color: var(--sky-primary);
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+  transition: border-color 160ms ease, background 160ms ease,
+    transform 300ms var(--sky-press-release);
+}
+
+.browse-menu-button:hover {
+  border-color: var(--sky-primary);
+  background: var(--sky-primary-soft);
+}
+
+.recommendation-results {
+  min-height: 350px;
+  margin-top: 18px;
+  overflow: hidden;
+  border-radius: var(--sky-radius-lg);
+}
+
+.recommendation-track {
+  display: flex;
+  gap: 18px;
+  width: 100%;
+  padding: 2px 2px 14px;
   overflow-x: auto;
-  padding: 1px 1px 9px;
+  overscroll-behavior-inline: contain;
+  scroll-behavior: smooth;
+  scroll-snap-type: x mandatory;
   scrollbar-width: thin;
   scrollbar-color: var(--sky-border) transparent;
 }
 
-.spotlight-card {
-  display: grid;
-  grid-template-columns: 68px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  min-height: 84px;
-  padding: 8px;
-  border: 1px solid var(--sky-border-soft);
-  border-radius: 13px;
-  background: #fff;
-  box-shadow: 0 2px 9px rgb(37 50 42 / 3%);
-  text-align: left;
-  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
-}
-
-.spotlight-card:hover {
-  border-color: #f3c8ba;
-  box-shadow: var(--sky-shadow-sm);
-  transform: translateY(-2px);
-}
-
-.spotlight-image {
-  display: block;
-  width: 68px;
-  height: 60px;
+.recommendation-card {
+  display: flex;
+  flex: 0 0 calc((100% - 54px) / 3.5);
+  flex-direction: column;
+  min-width: 220px;
   overflow: hidden;
-  border-radius: 9px;
-  background: var(--sky-surface-2);
+  border: 1px solid var(--sky-border-soft);
+  border-radius: 17px;
+  background: var(--sky-surface);
+  box-shadow: 0 4px 16px rgb(31 64 48 / 5%);
+  scroll-snap-align: start;
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
 }
 
-.spotlight-image img {
+.recommendation-card:hover {
+  transform: translateY(-3px);
+  border-color: #cfe4d8;
+  box-shadow: var(--sky-shadow);
+}
+
+.recommendation-image {
+  position: relative;
+  display: grid;
+  width: 100%;
+  aspect-ratio: 1.72 / 1;
+  min-height: 152px;
+  max-height: 208px;
+  place-items: center;
+  overflow: hidden;
+  padding: 0;
+  background: linear-gradient(145deg, #edf4ed, #e4eee5 58%, #f4f0e4);
+  text-align: center;
+}
+
+.recommendation-image > img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  transition: transform 260ms ease;
 }
 
-.spotlight-placeholder {
+.recommendation-card:hover .recommendation-image > img {
+  transform: scale(1.04);
+}
+
+.recommendation-image-placeholder {
   display: grid;
-  width: 100%;
-  height: 100%;
+  gap: 7px;
   place-items: center;
-  color: var(--sky-text-weak);
-  font-size: 23px;
+  color: #729080;
+  font-size: 12px;
 }
 
-.spotlight-copy {
-  display: grid;
+.recommendation-image-placeholder .el-icon {
+  font-size: 34px;
+}
+
+.recommendation-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  padding: 5px 9px;
+  border: 1px solid rgb(255 255 255 / 60%);
+  border-radius: var(--sky-radius-pill);
+  background: rgb(19 104 81 / 88%);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1;
+  backdrop-filter: blur(8px);
+}
+
+.recommendation-card-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
   min-width: 0;
-  gap: 4px;
+  padding: 15px 16px 16px;
 }
 
-.spotlight-copy strong,
-.spotlight-copy small {
+.recommendation-card-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.recommendation-category {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--sky-primary);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.recommendation-card-heading h3 {
   overflow: hidden;
+  color: var(--sky-text);
+  font-size: 16px;
+  font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.spotlight-copy strong {
-  color: var(--sky-text);
-  font-size: 13px;
-  font-weight: 650;
-}
-
-.spotlight-copy small {
+.recommendation-sales {
+  flex: 0 0 auto;
+  padding-top: 18px;
   color: var(--sky-text-weak);
   font-size: 10px;
+  white-space: nowrap;
 }
 
-.spotlight-arrow {
-  color: var(--sky-text-weak);
-  font-size: 13px;
+.recommendation-description {
+  display: -webkit-box;
+  min-height: 39px;
+  margin-top: 8px;
+  overflow: hidden;
+  color: var(--sky-text-sub);
+  font-size: 12px;
+  line-height: 1.6;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.recommendation-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 14px;
+}
+
+.recommendation-price {
+  margin: 0;
+  color: var(--sky-price);
+  font-size: 21px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.recommendation-price small {
+  margin-right: 2px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.recommendation-add {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 78px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: var(--sky-radius-pill);
+  background: var(--sky-primary);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 650;
+  transition: background 160ms ease, transform 300ms var(--sky-press-release);
+}
+
+.recommendation-add:hover:not(:disabled) {
+  background: var(--sky-primary-dark);
+  transform: translateY(-1px);
+}
+
+.recommendation-add:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .menu-section {
@@ -1212,7 +2016,7 @@ onMounted(async () => {
   color: #fff;
   font-size: 13px;
   font-weight: 650;
-  transition: background 160ms ease, transform 160ms ease;
+  transition: background 160ms ease, transform 300ms var(--sky-press-release);
 }
 
 .checkout-button:hover:not(:disabled) {
@@ -1445,6 +2249,179 @@ onMounted(async () => {
   object-fit: cover;
 }
 
+.dish-detail-page {
+  position: fixed;
+  z-index: 1200;
+  inset: 0;
+  overflow: hidden;
+  background: var(--sky-surface);
+  color: var(--sky-text);
+}
+
+.dish-detail-shell {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  background: var(--sky-surface);
+}
+
+.dish-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 68px;
+  padding: 0 max(24px, calc((100vw - 1120px) / 2));
+  border-bottom: 1px solid var(--sky-border-soft);
+  background: var(--sky-surface);
+}
+
+.detail-back-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 12px;
+  border-radius: var(--sky-radius);
+  color: var(--sky-text-sub);
+  font-size: 14px;
+}
+
+.detail-back-button:hover {
+  background: var(--sky-surface-2);
+  color: var(--sky-primary);
+}
+
+.detail-category,
+.detail-eyebrow {
+  color: var(--sky-text-weak);
+  font-size: 13px;
+}
+
+.dish-detail-scroll {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.dish-detail-content {
+  display: grid;
+  width: min(1120px, 100%);
+  min-height: 100%;
+  grid-template-columns: minmax(0, 1.05fr) minmax(340px, 0.95fr);
+  align-items: start;
+  gap: clamp(28px, 5vw, 72px);
+  padding: 42px 24px 48px;
+  margin-inline: auto;
+}
+
+.dish-detail-hero {
+  position: sticky;
+  top: 24px;
+  width: 100%;
+  max-height: min(68dvh, 620px);
+  aspect-ratio: 1.08;
+  border-radius: 18px;
+  background: var(--sky-surface-2);
+  object-fit: cover;
+}
+
+.dish-detail-placeholder {
+  display: grid;
+  place-items: center;
+  color: var(--sky-text-weak);
+  font-size: 48px;
+  font-weight: 700;
+}
+
+.dish-detail-copy {
+  min-width: 0;
+  padding-top: 10px;
+}
+
+.detail-eyebrow {
+  margin: 0 0 9px;
+  color: var(--sky-primary);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+}
+
+.dish-detail-copy h1 {
+  margin: 0;
+  color: var(--sky-text);
+  font-size: clamp(26px, 3vw, 38px);
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.dish-detail-description {
+  margin: 12px 0 0;
+  color: var(--sky-text-sub);
+  font-size: 15px;
+  line-height: 1.8;
+}
+
+.dish-detail-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 82px;
+  padding: 12px max(24px, calc((100vw - 1120px) / 2));
+  border-top: 1px solid var(--sky-border-soft);
+  background: var(--sky-surface);
+}
+
+.dish-detail-footer > strong {
+  color: var(--sky-primary);
+  font-size: 24px;
+}
+
+.dish-detail-footer .checkout-button {
+  min-width: 180px;
+}
+
+:global(::view-transition-group(dish-detail-shared)) {
+  border-radius: 14px;
+  box-shadow: none;
+  filter: none;
+  animation-duration: 320ms;
+  animation-timing-function: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+:global(::view-transition-old(dish-detail-shared)),
+:global(::view-transition-new(dish-detail-shared)) {
+  height: 100%;
+  box-shadow: none !important;
+  filter: none !important;
+  animation-duration: 320ms;
+  animation-timing-function: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+:global(::view-transition-old(dish-detail-shared)) {
+  animation-name: dish-shared-old;
+}
+
+:global(::view-transition-new(dish-detail-shared)) {
+  animation-name: dish-shared-new;
+}
+
+@keyframes dish-shared-old {
+  to {
+    opacity: 0.88;
+    filter: blur(0);
+    transform: translateY(1px);
+  }
+}
+
+@keyframes dish-shared-new {
+  from {
+    opacity: 0.88;
+    filter: blur(0);
+    transform: translateY(1px);
+  }
+}
+
 .dish-detail > p {
   margin-top: 14px;
   color: var(--sky-text-sub);
@@ -1469,6 +2446,61 @@ onMounted(async () => {
   text-align: right;
 }
 
+.dish-review-preview {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--sky-border-soft);
+}
+
+.review-preview-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.review-preview-heading h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.review-preview-heading > span {
+  color: var(--sky-primary);
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.review-preview-card {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--sky-border-soft);
+}
+
+.review-preview-card > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--sky-text-sub);
+  font-size: 12px;
+}
+
+.review-preview-card p {
+  margin: 8px 0;
+  color: var(--sky-text-sub);
+  font-size: 13px;
+}
+
+.review-preview-images {
+  display: flex;
+  gap: 6px;
+}
+
+.review-preview-images img {
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
 @media (max-width: 1150px) {
   .store-toolbar {
     grid-template-columns: minmax(170px, 1fr) auto minmax(180px, 1.1fr) auto;
@@ -1479,8 +2511,17 @@ onMounted(async () => {
     display: none;
   }
 
-  .spotlight-row {
-    grid-auto-columns: minmax(175px, 1fr);
+  .campaign-banner {
+    padding-inline: 36px;
+  }
+
+  .campaign-art {
+    right: 5%;
+    transform: translateY(-50%) scale(0.88);
+  }
+
+  .recommendation-card {
+    flex-basis: calc((100% - 36px) / 2.5);
   }
 
   .dish-grid {
@@ -1489,6 +2530,24 @@ onMounted(async () => {
 }
 
 @media (max-width: 900px) {
+  .campaign-banner {
+    min-height: 242px;
+    padding-inline: 30px;
+  }
+
+  .campaign-art {
+    right: -1%;
+    transform: translateY(-50%) scale(0.78);
+  }
+
+  .campaign-copy {
+    max-width: 62%;
+  }
+
+  .recommendation-card {
+    flex-basis: calc((100% - 24px) / 2.2);
+  }
+
   .store-toolbar {
     grid-template-columns: minmax(160px, 1fr) auto auto;
   }
@@ -1536,8 +2595,97 @@ onMounted(async () => {
 }
 
 @media (max-width: 600px) {
+  .dish-detail-header {
+    min-height: 58px;
+    padding-inline: 14px;
+  }
+
+  .dish-detail-content {
+    display: block;
+    padding: 16px 14px 28px;
+  }
+
+  .dish-detail-hero {
+    position: static;
+    max-height: 42dvh;
+    aspect-ratio: 1.2;
+    border-radius: 14px;
+  }
+
+  .dish-detail-copy {
+    padding-top: 22px;
+  }
+
+  .dish-detail-copy h1 {
+    font-size: 26px;
+  }
+
+  .dish-detail-footer {
+    min-height: 72px;
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+  }
+
+  .dish-detail-footer .checkout-button {
+    min-width: 150px;
+  }
+
   .storefront {
     padding-bottom: calc(144px + env(safe-area-inset-bottom));
+  }
+
+  .campaign-banner {
+    min-height: 256px;
+    padding: 30px 22px 60px;
+    border-radius: 17px;
+  }
+
+  .campaign-copy {
+    max-width: 100%;
+  }
+
+  .campaign-eyebrow {
+    margin-bottom: 9px;
+    font-size: 9px;
+  }
+
+  .campaign-copy h1 {
+    max-width: 15ch;
+    font-size: clamp(26px, 8vw, 34px);
+  }
+
+  .campaign-description {
+    max-width: 30ch;
+    font-size: 12px;
+  }
+
+  .campaign-action {
+    min-height: 38px;
+    margin-top: 16px;
+    font-size: 12px;
+  }
+
+  .campaign-art {
+    top: auto;
+    right: -111px;
+    bottom: -82px;
+    opacity: 0.42;
+    transform: scale(0.76);
+    transform-origin: center;
+  }
+
+  .campaign-indicators {
+    bottom: 22px;
+    left: 22px;
+  }
+
+  .campaign-controls {
+    right: 14px;
+    bottom: 13px;
+  }
+
+  .campaign-controls button {
+    width: 32px;
+    height: 32px;
   }
 
   .store-toolbar {
@@ -1592,18 +2740,57 @@ onMounted(async () => {
     min-height: 40px;
   }
 
-  .spotlight-section {
-    margin-top: 22px;
+  .recommendations-section {
+    margin-top: 28px;
   }
 
-  .spotlight-row {
-    grid-auto-columns: minmax(205px, 72vw);
-    gap: 10px;
+  .recommendations-section .section-heading {
+    align-items: center;
+  }
+
+  .recommendations-section .section-heading > div {
+    min-width: 0;
+  }
+
+  .recommendation-heading-actions {
+    gap: 5px;
+  }
+
+  .carousel-control {
+    width: 30px;
+    height: 30px;
+  }
+
+  .browse-menu-button {
+    min-height: 32px;
+    padding-inline: 8px;
+    font-size: 10px;
+  }
+
+  .recommendation-results {
+    min-height: 286px;
     margin-top: 12px;
   }
 
-  .spotlight-card {
-    min-height: 78px;
+  .recommendation-track {
+    gap: 12px;
+  }
+
+  .recommendation-card {
+    flex-basis: calc((100% - 18px) / 1.25);
+    min-width: 0;
+  }
+
+  .recommendation-image {
+    min-height: 138px;
+  }
+
+  .recommendation-card-body {
+    padding: 13px 13px 14px;
+  }
+
+  .recommendation-sales {
+    font-size: 9px;
   }
 
   .menu-section {
@@ -1676,6 +2863,23 @@ onMounted(async () => {
 }
 
 @media (max-width: 380px) {
+  .campaign-banner {
+    min-height: 244px;
+    padding-inline: 18px;
+  }
+
+  .campaign-copy h1 {
+    font-size: 26px;
+  }
+
+  .recommendation-heading-actions .carousel-control {
+    display: none;
+  }
+
+  .recommendation-card {
+    flex-basis: 88%;
+  }
+
   .delivery-copy strong {
     max-width: 55vw;
   }

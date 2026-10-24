@@ -19,8 +19,14 @@
           >
             <!-- <i v-if="theOnlyOneChild.meta.title==='工作台'" class="iconfont icon img-icon-sel" /> -->
             <!-- <svg-icon v-if="theOnlyOneChild.meta.title==='工作台'" name="dashboard" width="20" height="20"></svg-icon> -->
+            <el-icon
+              v-if="theOnlyOneChild.meta.icon === 'coupon'"
+              class="sidebar-menu-icon"
+            >
+              <Ticket />
+            </el-icon>
             <i
-              v-if="theOnlyOneChild.meta.icon"
+              v-else-if="theOnlyOneChild.meta.icon"
               class="iconfont"
               :class="theOnlyOneChild.meta.icon"
             />
@@ -65,11 +71,13 @@ import { UserModule } from '@/store/modules/user'
 import type { RouteRecordRaw } from 'vue-router'
 import { isExternal } from '@/utils/validate'
 import SidebarItemLink from './SidebarItemLink.vue'
+import { Ticket } from '@element-plus/icons-vue'
 
 @Component({
   name: 'SidebarItem',
   components: {
     SidebarItemLink,
+    Ticket,
   },
 })
 export default class SidebarItem extends Vue {

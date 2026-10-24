@@ -1,6 +1,17 @@
 <script setup lang="ts">
-import { computed, type Component } from 'vue'
-import { ArrowRight, Dish, House, Location, Tickets, User } from '@element-plus/icons-vue'
+import { computed, onBeforeUnmount, onMounted, ref, type Component } from 'vue'
+import {
+  ArrowLeft,
+  ArrowRight,
+  Calendar,
+  ChatLineRound,
+  Discount,
+  Dish,
+  House,
+  Location,
+  Present,
+  Tickets,
+} from '@element-plus/icons-vue'
 import { useRoute, type RouteLocationRaw } from 'vue-router'
 import { useCheckoutStore } from '@/stores/checkout'
 import { useShopStore } from '@/stores/shop'
@@ -11,6 +22,8 @@ const route = useRoute()
 const checkout = useCheckoutStore()
 const shop = useShopStore()
 const user = useUserStore()
+const isSidebarCollapsed = ref(window.innerWidth <= 900)
+const voiceAssistantEnabled = import.meta.env.VITE_ENABLE_VOICE_ASSISTANT !== 'false'
 
 interface NavItem {
   name: string
@@ -33,6 +46,24 @@ const navItems: NavItem[] = [
     active: () => route.path === '/index' && route.hash === '#menu',
   },
   {
+    name: '套餐专区',
+    to: { path: '/meals' },
+    icon: Present,
+    active: () => route.path === '/meals',
+  },
+  {
+    name: '预订点餐',
+    to: { path: '/reservation' },
+    icon: Calendar,
+    active: () => route.path === '/reservation',
+  },
+  {
+    name: '评价晒单',
+    to: { path: '/reviews' },
+    icon: ChatLineRound,
+    active: () => route.path === '/reviews',
+  },
+  {
     name: '我的订单',
     to: { path: '/history' },
     icon: Tickets,
@@ -50,10 +81,10 @@ const navItems: NavItem[] = [
     active: () => route.path.startsWith('/address'),
   },
   {
-    name: '个人中心',
-    to: { path: '/my' },
-    icon: User,
-    active: () => route.path === '/my',
+    name: '领券中心',
+    to: { path: '/coupons' },
+    icon: Discount,
+    active: () => route.path === '/coupons',
   },
 ]
 
@@ -64,12 +95,43 @@ const displayName = computed(
 function onNavigate(item: NavItem) {
   if (item.name === '地址管理') checkout.setAddressBackPath('/index')
 }
+
+function toggleSidebar() {
+  isSidebarCollapsed.value = !isSidebarCollapsed.value
+}
+
+function handleResize() {
+  if (window.innerWidth <= 900) isSidebarCollapsed.value = true
+}
+
+onMounted(() => window.addEventListener('resize', handleResize))
+onBeforeUnmount(() => window.removeEventListener('resize', handleResize))
 </script>
 
 <template>
-  <div class="main-layout">
+  <div class="main-layout" :class="{ 'is-sidebar-collapsed': isSidebarCollapsed }">
     <div class="workspace-shell">
       <aside class="side-rail" aria-label="网站导航">
+        <div class="rail-heading">
+          <RouterLink class="rail-brand" to="/index" aria-label="智享云膳首页">
+            <img src="/static/brand-mark.svg" alt="" />
+            <span>
+              <strong>智享云膳</strong>
+              <small>鲜食 · 好味 · 即刻享</small>
+            </span>
+          </RouterLink>
+          <button
+            class="rail-collapse-toggle"
+            type="button"
+            :aria-label="isSidebarCollapsed ? '展开导航栏' : '收起导航栏'"
+            :aria-expanded="!isSidebarCollapsed"
+            @click="toggleSidebar"
+          >
+            <el-icon aria-hidden="true">
+              <component :is="isSidebarCollapsed ? ArrowRight : ArrowLeft" />
+            </el-icon>
+          </button>
+        </div>
         <nav class="rail-nav" aria-label="主导航">
           <RouterLink
             v-for="item in navItems"
@@ -78,29 +140,22 @@ function onNavigate(item: NavItem) {
             class="rail-link"
             :class="{ active: item.active() }"
             :aria-current="item.active() ? 'page' : undefined"
+            :aria-label="item.name"
+            :title="item.name"
             @click="onNavigate(item)"
           >
             <el-icon aria-hidden="true"><component :is="item.icon" /></el-icon>
             <span>{{ item.name }}</span>
           </RouterLink>
         </nav>
-
-        <RouterLink class="rail-profile" to="/my" :aria-label="`个人中心：${displayName}`">
-          <span class="profile-avatar" aria-hidden="true">{{ displayName.slice(0, 1) }}</span>
-          <span class="profile-copy">
-            <strong>{{ displayName }}</strong>
-            <small>个人中心</small>
-          </span>
-          <el-icon class="profile-arrow" aria-hidden="true"><ArrowRight /></el-icon>
-        </RouterLink>
       </aside>
 
       <div class="workspace-column">
         <header class="layout-header">
           <div class="header-content">
-            <RouterLink class="mobile-brand" to="/index" aria-label="苍穹外卖首页">
-              <img src="/static/logo.png" alt="" />
-              <strong>苍穹外卖</strong>
+            <RouterLink class="mobile-brand" to="/index" aria-label="智享云膳首页">
+              <img src="/static/brand-mark.svg" alt="" />
+              <strong>智享云膳</strong>
             </RouterLink>
             <div
               class="header-shop-state"
@@ -113,7 +168,7 @@ function onNavigate(item: NavItem) {
               <span>
                 {{
                   route.path !== '/index'
-                    ? '苍穹外卖'
+                    ? '智享云膳'
                     : shop.isOpen
                       ? '营业中'
                       : shop.isClosed
@@ -136,26 +191,31 @@ function onNavigate(item: NavItem) {
         </main>
       </div>
     </div>
-    <VoiceAssistant v-if="user.token" />
+    <VoiceAssistant v-if="voiceAssistantEnabled && user.token" />
   </div>
 </template>
 
 <style scoped>
 .main-layout {
-  --sky-sidebar-width: 232px;
+  --sky-sidebar-width: 248px;
   min-height: 100dvh;
   padding: 24px;
   background: #edf0f5;
 }
 
+.main-layout.is-sidebar-collapsed {
+  --sky-sidebar-width: 96px;
+}
+
 .workspace-shell {
   display: grid;
   grid-template-columns: var(--sky-sidebar-width) minmax(0, 1fr);
+  gap: 12px;
   width: 100%;
   max-width: 1600px;
   min-height: calc(100dvh - 48px);
   margin-inline: auto;
-  overflow: clip;
+  overflow: visible;
   border: 1px solid rgb(255 255 255 / 78%);
   border-radius: 26px;
   background: var(--sky-surface);
@@ -163,16 +223,95 @@ function onNavigate(item: NavItem) {
 }
 
 .side-rail {
-  position: sticky;
-  top: 24px;
+  position: fixed;
+  top: 36px;
+  left: max(36px, calc((100vw - 1600px) / 2 + 36px));
+  z-index: 40;
   display: flex;
+  width: calc(var(--sky-sidebar-width) - 12px);
   flex-direction: column;
-  align-self: start;
-  height: calc(100dvh - 48px);
-  min-height: 620px;
-  padding: 22px 16px 16px;
-  border-right: 1px solid var(--sky-border-soft);
-  background: #fff;
+  height: calc(100dvh - 72px);
+  min-height: 0;
+  padding: 18px 12px 14px;
+  border: 1px solid rgb(255 255 255 / 78%);
+  border-radius: 22px;
+  background: linear-gradient(180deg, #0e6655 0%, #0b594b 100%);
+  color: #fff;
+  box-shadow: 0 14px 36px rgb(33 62 49 / 16%);
+  transition: width 180ms ease, box-shadow 180ms ease;
+}
+
+.rail-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.rail-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 54px;
+  padding: 0 5px;
+  color: #fff;
+  text-decoration: none;
+}
+
+.rail-collapse-toggle {
+  display: inline-flex;
+  flex: 0 0 32px;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 9px;
+  background: rgb(255 255 255 / 8%);
+  color: #fff;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease,
+    transform 300ms var(--sky-press-release);
+}
+
+.rail-collapse-toggle:hover {
+  border-color: rgb(255 255 255 / 32%);
+  background: rgb(255 255 255 / 16%);
+}
+
+.rail-collapse-toggle:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.rail-brand img {
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  padding: 5px;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 13px;
+  background: rgb(255 255 255 / 12%);
+  object-fit: contain;
+}
+
+.rail-brand span {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.rail-brand strong {
+  font-size: 15px;
+  font-weight: 750;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.rail-brand small {
+  color: rgb(255 255 255 / 66%);
+  font-size: 10px;
+  white-space: nowrap;
 }
 
 .mobile-brand img {
@@ -183,8 +322,13 @@ function onNavigate(item: NavItem) {
 
 .rail-nav {
   display: grid;
+  min-height: 0;
   gap: 6px;
-  padding-top: 18px;
+  align-content: start;
+  padding-top: 22px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
 
 .rail-link {
@@ -196,11 +340,12 @@ function onNavigate(item: NavItem) {
   padding: 0 13px;
   border: 1px solid transparent;
   border-radius: 11px;
-  color: var(--sky-text-sub);
+  color: rgb(255 255 255 / 78%);
   font-size: 14px;
   font-weight: 550;
   text-decoration: none;
-  transition: color 160ms ease, background 160ms ease, border-color 160ms ease;
+  transition: color 160ms ease, background 160ms ease, border-color 160ms ease,
+    transform 300ms var(--sky-press-release);
 }
 
 .rail-link .el-icon {
@@ -208,74 +353,57 @@ function onNavigate(item: NavItem) {
   font-size: 19px;
 }
 
+.is-sidebar-collapsed .rail-heading {
+  flex-direction: column;
+  gap: 12px;
+}
+
+.is-sidebar-collapsed .rail-brand {
+  justify-content: center;
+}
+
+.is-sidebar-collapsed .rail-brand span,
+.is-sidebar-collapsed .rail-link span {
+  display: none;
+}
+
+.is-sidebar-collapsed .rail-collapse-toggle {
+  flex-basis: 30px;
+  width: 30px;
+  height: 30px;
+}
+
+.is-sidebar-collapsed .rail-nav {
+  justify-items: center;
+}
+
+.is-sidebar-collapsed .rail-link {
+  justify-content: center;
+  width: 48px;
+  padding: 0;
+}
+
+.is-sidebar-collapsed .rail-link .el-icon {
+  font-size: 21px;
+}
+
 .rail-link:hover {
-  background: var(--sky-surface-2);
-  color: var(--sky-text);
+  background: rgb(255 255 255 / 10%);
+  color: #fff;
 }
 
 .rail-link.active {
-  border-color: #f6d7ad;
-  background: #fff7eb;
-  color: var(--sky-primary);
+  border-color: rgb(255 255 255 / 20%);
+  background: rgb(255 255 255 / 15%);
+  color: #fff;
   font-weight: 650;
 }
 
-.rail-profile {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  min-height: 68px;
-  padding: 12px 8px 0;
-  margin-top: auto;
-  border-top: 1px solid var(--sky-border-soft);
-  color: var(--sky-text);
-  text-decoration: none;
-}
-
-.profile-avatar {
-  display: grid;
-  flex: 0 0 38px;
-  place-items: center;
-  width: 38px;
-  height: 38px;
-  border: 1px solid var(--sky-border-soft);
-  border-radius: 50%;
-  background: var(--sky-primary-soft);
-  color: var(--sky-primary);
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.profile-copy {
-  display: grid;
-  flex: 1;
-  min-width: 0;
-  gap: 2px;
-}
-
-.profile-copy strong,
-.profile-copy small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.profile-copy strong {
-  font-size: 13px;
-}
-
-.profile-copy small {
-  color: var(--sky-text-weak);
-  font-size: 11px;
-}
-
-.profile-arrow {
-  color: var(--sky-text-weak);
-}
-
 .workspace-column {
+  grid-column: 2;
+  overflow: clip;
   min-width: 0;
+  border-radius: 25px;
   background: #fff;
 }
 
@@ -375,7 +503,6 @@ function onNavigate(item: NavItem) {
 
 @media (max-width: 900px) {
   .main-layout {
-    --sky-sidebar-width: 76px;
     padding: 14px;
   }
 
@@ -385,35 +512,12 @@ function onNavigate(item: NavItem) {
   }
 
   .side-rail {
-    top: 14px;
-    height: calc(100dvh - 28px);
-    min-height: 520px;
-    padding: 18px 10px 12px;
-  }
-
-  .rail-link span,
-  .profile-copy,
-  .profile-arrow {
-    display: none;
-  }
-
-  .rail-nav {
-    justify-items: center;
-  }
-
-  .rail-link {
-    justify-content: center;
-    width: 48px;
-    padding: 0;
-  }
-
-  .rail-link .el-icon {
-    font-size: 21px;
-  }
-
-  .rail-profile {
-    justify-content: center;
-    padding-inline: 0;
+    top: 28px;
+    left: max(26px, calc((100vw - 1600px) / 2 + 26px));
+    height: calc(100dvh - 56px);
+    min-height: 0;
+    padding: 16px 10px 12px;
+    border-radius: 20px;
   }
 
   .header-content {
@@ -440,6 +544,11 @@ function onNavigate(item: NavItem) {
     box-shadow: none;
   }
 
+  .workspace-column {
+    overflow: visible;
+    border-radius: 0;
+  }
+
   .side-rail {
     position: fixed;
     top: auto;
@@ -451,16 +560,14 @@ function onNavigate(item: NavItem) {
     width: 100%;
     height: calc(62px + env(safe-area-inset-bottom));
     min-height: 0;
+    border-radius: 0;
     padding: 0 6px env(safe-area-inset-bottom);
     border-top: 1px solid var(--sky-border-soft);
     border-right: 0;
     background: rgb(255 255 255 / 97%);
+    color: var(--sky-text);
     box-shadow: 0 -6px 24px rgb(30 45 61 / 8%);
     backdrop-filter: blur(14px);
-  }
-
-  .rail-profile {
-    display: none;
   }
 
   .rail-nav {
@@ -469,6 +576,14 @@ function onNavigate(item: NavItem) {
     gap: 0;
     height: 100%;
     padding: 4px 0 0;
+  }
+
+  .rail-brand {
+    display: none;
+  }
+
+  .rail-collapse-toggle {
+    display: none;
   }
 
   .rail-link {
@@ -484,6 +599,18 @@ function onNavigate(item: NavItem) {
     border-radius: 9px;
     font-size: 10px;
     line-height: 1.2;
+    color: var(--sky-text-weak);
+  }
+
+  .rail-link:hover {
+    background: transparent;
+    color: var(--sky-primary);
+  }
+
+  .rail-link.active {
+    border-color: transparent;
+    background: transparent;
+    color: var(--sky-primary);
   }
 
   .rail-link span {
@@ -492,6 +619,10 @@ function onNavigate(item: NavItem) {
     max-width: 100%;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .main-layout.is-sidebar-collapsed .rail-link span {
+    display: block;
   }
 
   .rail-link .el-icon {

@@ -3,8 +3,8 @@
 <mapper namespace="com.sky.mapper.SetmealMapper">
         <insert id="insert" parameterType="Setmeal" useGeneratedKeys="true" keyProperty="id">
             insert into setmeal
-            (category_id, name, price, status, description, image, create_time, update_time, create_user, update_user)
-            values (#{categoryId}, #{name}, #{price}, #{status}, #{description}, #{image}, #{createTime}, #{updateTime},
+            (category_id, name, price, stock, status, description, image, create_time, update_time, create_user, update_user)
+            values (#{categoryId}, #{name}, #{price}, #{stock}, #{status}, #{description}, #{image}, #{createTime}, #{updateTime},
                     #{createUser}, #{updateUser})
         </insert>
     <select id="pageQuery" resultType="com.sky.vo.SetmealVO">
@@ -34,6 +34,7 @@
             <if test="categoryId != null">category_id = #{categoryId},</if>
             <if test="name != null">name = #{name},</if>
             <if test="price != null">price = #{price},</if>
+            <if test="stock != null">stock = #{stock},</if>
             <if test="status != null">status = #{status},</if>
             <if test="description != null">description = #{description},</if>
             <if test="image != null">image = #{image},</if>

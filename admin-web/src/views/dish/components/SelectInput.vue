@@ -88,7 +88,7 @@ export default class SelectInput extends Vue {
       }
       &:active {
         background-color: #fffbf0;
-        color: #ffc200;
+        color: var(--admin-primary);
       }
     }
     .none {

@@ -6,9 +6,11 @@ import com.sky.dto.VoiceSessionRedeemDTO;
 import com.sky.dto.VoiceSessionValidationVO;
 import com.sky.dto.AgentCouponQueryDTO;
 import com.sky.service.AgentBusinessQueryService;
+import com.sky.service.DiningPreferenceService;
 import com.sky.service.VoiceSessionService;
 import com.sky.exception.VoiceSessionException;
 import com.sky.vo.AgentCouponPageVO;
+import com.sky.vo.AgentDishRecommendationVO;
 import com.sky.vo.AgentOrderSummaryVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -29,6 +31,7 @@ import java.util.Map;
 public class AgentVoiceSessionController {
     private final VoiceSessionService voiceSessionService;
     private final AgentBusinessQueryService businessQueryService;
+    private final DiningPreferenceService diningPreferenceService;
 
     @PostMapping("/redeem")
     public VoiceSessionGrantVO redeem(@RequestBody VoiceSessionRedeemDTO request) {
@@ -64,6 +67,16 @@ public class AgentVoiceSessionController {
                 sessionId, request.getSessionCapability(), "coupons:read");
         return businessQueryService.coupons(
                 userId, request.getPage(), request.getPageSize(), request.getStatus());
+    }
+
+    @PostMapping("/{sessionId}/recommendations")
+    public AgentDishRecommendationVO recommendations(
+            @PathVariable String sessionId,
+            @RequestBody VoiceSessionCapabilityDTO request) {
+        if (request == null) throw new VoiceSessionException("菜品推荐请求无效");
+        Long userId = voiceSessionService.authorizeRead(
+                sessionId, request.getSessionCapability(), "menu:read");
+        return diningPreferenceService.recommend(userId);
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

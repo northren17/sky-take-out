@@ -36,7 +36,9 @@ private DishMapper dishMapper;
      * @param setmealDTO 套餐信息
      */
     @Override
+    @Transactional
     public void saveWithDish(SetmealDTO setmealDTO) {
+        applyFirstDishImage(setmealDTO);
         Setmeal setmeal = new Setmeal();
         BeanUtils.copyProperties(setmealDTO, setmeal);
 
@@ -113,6 +115,7 @@ private DishMapper dishMapper;
      */
     @Transactional
     public void update(SetmealDTO setmealDTO) {
+        applyFirstDishImage(setmealDTO);
         Setmeal setmeal = new Setmeal();
         BeanUtils.copyProperties(setmealDTO, setmeal);
 
@@ -132,6 +135,24 @@ private DishMapper dishMapper;
         //3、重新插入套餐和菜品的关联关系，操作setmeal_dish表，执行insert
         setmealDishMapper.insertBatch(setmealDishes);
     }
+
+    private void applyFirstDishImage(SetmealDTO setmealDTO) {
+        List<SetmealDish> setmealDishes = setmealDTO.getSetmealDishes();
+        if (setmealDishes == null || setmealDishes.isEmpty()) {
+            return;
+        }
+
+        Long firstDishId = setmealDishes.get(0).getDishId();
+        if (firstDishId == null) {
+            return;
+        }
+
+        Dish firstDish = dishMapper.getByid(firstDishId);
+        if (firstDish != null && firstDish.getImage() != null && !firstDish.getImage().trim().isEmpty()) {
+            setmealDTO.setImage(firstDish.getImage());
+        }
+    }
+
     /**
      * 套餐起售、停售
      * @param status
@@ -176,4 +197,3 @@ private DishMapper dishMapper;
         return setmealMapper.getDishItemBySetmealId(id);
     }
 }
-

@@ -12,6 +12,8 @@ public class OrderRefundRecord {
     private Long orderId;
     private String orderNumber;
     private BigDecimal refundAmount;
+    private BigDecimal eligibleGoodsRefundAmount;
+    private String requestId;
     private Integer status;
     private String responseBody;
     private LocalDateTime createTime;

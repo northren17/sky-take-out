@@ -11,7 +11,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 
-from agent.llm_agent import DeepSeekVoiceAgent
+from agent.llm_agent import QwenVoiceAgent
 from agent.tools import customer_service
 from agent.tools.customer_service import ticket_create
 from agent.tools.ticket_service import (
@@ -507,7 +507,7 @@ class TicketAgentIntegrationTests(unittest.IsolatedAsyncioTestCase):
                     AIMessage(content="催办失败。"),
                 ]
             )
-            agent = DeepSeekVoiceAgent(model=model, tools=[ticket_create, ticket_lookup, ticket_urge])
+            agent = QwenVoiceAgent(model=model, tools=[ticket_create, ticket_lookup, ticket_urge])
             self.assertEqual(await self.collect(agent, "创建工单"), "已创建。")
             self.assertEqual(await self.collect(agent, "查询工单"), "未找到。")
             self.assertEqual(await self.collect(agent, "催办工单"), "催办失败。")
@@ -521,7 +521,7 @@ class TicketAgentIntegrationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_natural_language_create_lookup_urge_lookup_lifecycle(self):
         model = LifecycleFakeModel()
-        agent = DeepSeekVoiceAgent(
+        agent = QwenVoiceAgent(
             model=model, tools=[ticket_create, ticket_lookup, ticket_urge]
         )
         created = await self.collect(agent, "请为 CUST001 创建退款异常工单")
@@ -546,7 +546,7 @@ class TicketAgentIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 AIMessage(content="已创建。"),
             ]
         )
-        agent = DeepSeekVoiceAgent(model=model, tools=[ticket_create])
+        agent = QwenVoiceAgent(model=model, tools=[ticket_create])
         await self.collect(agent, "请创建投诉工单")
         records = json.loads(self.tickets_file.read_text(encoding="utf-8"))
         self.assertEqual(len(records), 1)
@@ -571,7 +571,7 @@ class TicketAgentIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 AIMessage(content="已确认。"),
             ]
         )
-        agent = DeepSeekVoiceAgent(model=model, tools=[ticket_create])
+        agent = QwenVoiceAgent(model=model, tools=[ticket_create])
         await self.collect(agent, "请创建投诉工单")
         await self.collect(agent, "请创建投诉工单")
         records = json.loads(self.tickets_file.read_text(encoding="utf-8"))
@@ -595,7 +595,7 @@ class TicketAgentIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 AIMessage(content="已确认。"),
             ]
         )
-        agent = DeepSeekVoiceAgent(model=model, tools=[ticket_create])
+        agent = QwenVoiceAgent(model=model, tools=[ticket_create])
         task = asyncio.create_task(self.collect(agent, "请创建投诉工单"))
         await asyncio.wait_for(entered.wait(), 2)
         task.cancel()
@@ -625,7 +625,7 @@ class TicketAgentIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 AIMessage(content="已处理。"),
             ]
         )
-        agent = DeepSeekVoiceAgent(model=model, tools=[ticket_create])
+        agent = QwenVoiceAgent(model=model, tools=[ticket_create])
         await self.collect(agent, "创建一张投诉工单")
         records = json.loads(self.tickets_file.read_text(encoding="utf-8"))
         messages = [item for item in agent.history if isinstance(item, ToolMessage)]

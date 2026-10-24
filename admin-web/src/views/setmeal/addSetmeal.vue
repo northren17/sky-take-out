@@ -42,6 +42,18 @@
           </el-form-item>
         </div>
         <div>
+          <el-form-item label="套餐库存:"
+                        prop="stock"
+          >
+            <el-input-number v-model="ruleForm.stock"
+                             :min="-1"
+                             :step="1"
+                             controls-position="right"
+            />
+            <span class="stock-hint">-1 表示不限库存</span>
+          </el-form-item>
+        </div>
+        <div>
           <el-form-item label="套餐菜品:"
                         required
           >
@@ -81,30 +93,33 @@
                       </el-table-column>
                       <el-table-column prop="address"
                                        label="份数"
+                                       width="180"
                                        align="center"
                       >
                         <template #default="scope">
-                          <el-input-number v-model="scope.row.copies"
-                                           size="small"
-                                           :min="1"
-                                           :max="99"
-                                           label="描述文字"
+                          <input v-model.number="scope.row.copies"
+                                 type="number"
+                                 min="1"
+                                 max="99"
+                                 step="1"
+                                 class="dish-copies-input"
+                                 :aria-label="`${scope.row.name}份数`"
+                                 @change="normalizeDishCopies(scope.row)"
                           />
                         </template>
                       </el-table-column>
                       <el-table-column prop="address"
                                        label="操作"
-                                       width="180px;"
+                                       width="100"
                                        align="center"
+                                       class-name="admin-table-action-column"
                       >
                         <template #default="scope">
-                          <el-button type="text"
-                                     size="small"
-                                     class="delBut non"
-                                     @click="delDishHandle(scope.$index)"
-                          >
-                            删除
-                          </el-button>
+                          <div class="admin-table-actions">
+                            <el-button type="danger" plain size="small" @click="delDishHandle(scope.$index)">
+                              删除
+                            </el-button>
+                          </div>
                         </template>
                       </el-table-column>
                     </el-table>
@@ -114,18 +129,13 @@
             </el-form-item>
           </el-form-item>
         </div>
-        <div>
-          <el-form-item label="套餐图片:"
-                        required
-                        prop="image"
-          >
-            <image-upload :prop-image-url="imageUrl"
-                          @imageChange="imageChange"
-            >
-              图片大小不超过2M<br>仅能上传 PNG JPEG JPG类型图片<br>建议上传200*200或300*300尺寸的图片
-            </image-upload>
-          </el-form-item>
-        </div>
+        <el-form-item label="套餐图片:">
+          <div class="setmeal-image-preview">
+            <img v-if="firstDishImage" :src="firstDishImage" alt="套餐首个菜品图片">
+            <div v-else class="setmeal-image-placeholder">选择菜品后自动使用首个菜品图片</div>
+            <span>套餐图片自动使用套餐中的首个菜品图片</span>
+          </div>
+        </el-form-item>
         <!-- <el-form-item
           label="商品码:"
           prop="code"
@@ -208,18 +218,15 @@
 <script lang="ts">
 import { Component, Vue } from 'vue-facing-decorator'
 import HeadLable from '@/components/HeadLable/index.vue'
-import ImageUpload from '@/components/ImgUpload/index.vue'
 import AddDish from './components/AddDish.vue'
 import { querySetmealById, addSetmeal, editSetmeal } from '@/api/setMeal'
 import { getCategoryList } from '@/api/dish'
-import { baseUrl } from '@/config.json'
 
 @Component({
   name: 'addShop',
   components: {
     HeadLable,
-    AddDish,
-    ImageUpload
+    AddDish
   }
 })
 export default class AddShop extends Vue {
@@ -227,7 +234,6 @@ export default class AddShop extends Vue {
   private setMealList: [] = []
   private seachKey: string = ''
   private dishList: [] = []
-  private imageUrl: string = ''
   private actionType: string = ''
   private dishTable: [] = []
   private dialogVisible: boolean = false
@@ -236,6 +242,7 @@ export default class AddShop extends Vue {
     name: '',
     categoryId: '',
     price: '',
+    stock: 100,
     code: '',
     image: '',
     description: '',
@@ -244,11 +251,15 @@ export default class AddShop extends Vue {
     idType: ''
   }
 
+  get firstDishImage() {
+    return (this.dishTable[0] as any)?.image || ''
+  }
+
   get rules() {
     return {
       name: {
         required: true,
-        validator: (rule: any, value: string, callback: Function) => {
+        validator: (rule: any, value: string, callback: (error?: Error) => void) => {
           if (!value) {
             callback(new Error('请输入套餐名称'))
           } else {
@@ -267,14 +278,10 @@ export default class AddShop extends Vue {
         message: '请选择套餐分类',
         trigger: 'change'
       },
-      image: {
-        required: true,
-        message: '菜品图片不能为空'
-      },
       price: {
         required: true,
         // 'message': '请输入套餐价格',
-        validator: (rules: any, value: string, callback: Function) => {
+        validator: (rules: any, value: string, callback: (error?: Error) => void) => {
           const reg = /^([1-9]\d{0,5}|0)(\.\d{1,2})?$/
           if (!reg.test(value) || Number(value) <= 0) {
             callback(
@@ -306,8 +313,6 @@ export default class AddShop extends Vue {
         this.ruleForm = res.data.data
         this.ruleForm.status = res.data.data.status == '1'
         ;(this.ruleForm as any).price = res.data.data.price
-        // this.imageUrl = `http://172.17.2.120:8080/common/download?name=${res.data.data.image}`
-        this.imageUrl = res.data.data.image
         this.checkList = res.data.data.setmealDishes
         this.dishTable = res.data.data.setmealDishes.reverse()
         this.ruleForm.idType = res.data.data.categoryId
@@ -354,7 +359,10 @@ export default class AddShop extends Vue {
 
   // 获取添加菜品数据 - 确定加菜倒序展示
   private getCheckList(value: any) {
-    this.checkList = [...value].reverse()
+    this.checkList = [...value].reverse().map((dish: any) => ({
+      ...dish,
+      copies: Number(dish.copies) || 1
+    }))
   }
 
   // 添加菜品
@@ -372,11 +380,21 @@ export default class AddShop extends Vue {
 
   // 保存添加菜品列表
   public addTableList() {
-    this.dishTable = JSON.parse(JSON.stringify(this.checkList))
-    this.dishTable.forEach((n: any) => {
-      n.copies = 1
-    })
+    const existingCopies = new Map(
+      (this.dishTable as any[]).map(dish => [dish.dishId, dish.copies])
+    )
+    this.dishTable = JSON.parse(JSON.stringify(this.checkList)).map((dish: any) => ({
+      ...dish,
+      copies: Number(existingCopies.get(dish.dishId) ?? dish.copies) || 1
+    })) as any
     this.dialogVisible = false
+  }
+
+  private normalizeDishCopies(dish: any) {
+    const copies = Number(dish.copies)
+    dish.copies = Number.isFinite(copies)
+      ? Math.min(99, Math.max(1, Math.trunc(copies)))
+      : 1
   }
 
   public submitForm(formName: any, st: any) {
@@ -385,10 +403,10 @@ export default class AddShop extends Vue {
         if (this.dishTable.length === 0) {
           return this.$message.error('套餐下菜品不能为空')
         }
-        if (!this.ruleForm.image) return this.$message.error('套餐图片不能为空')
         let prams = { ...this.ruleForm } as any
+        prams.image = this.firstDishImage
         prams.setmealDishes = this.dishTable.map((obj: any) => ({
-          copies: obj.copies,
+          copies: Number(obj.copies) || 1,
           dishId: obj.dishId,
           name: obj.name,
           price: obj.price
@@ -413,6 +431,7 @@ export default class AddShop extends Vue {
                     name: '',
                     categoryId: '',
                     price: '',
+                    stock: 100,
                     code: '',
                     image: '',
                     description: '',
@@ -421,7 +440,6 @@ export default class AddShop extends Vue {
                     id: '',
                     idType: ''
                   } as any
-                  this.imageUrl = ''
                 }
               } else {
                 this.$message.error(res.data.msg)
@@ -452,9 +470,6 @@ export default class AddShop extends Vue {
     })
   }
 
-  imageChange(value: any) {
-    this.ruleForm.image = value
-  }
 }
 </script>
 <style>
@@ -485,7 +500,7 @@ export default class AddShop extends Vue {
   }
 
   .avatar-uploader .el-upload:hover {
-    border-color: #ffc200;
+    border-color: var(--admin-primary);
   }
 
   .avatar-uploader-icon {
@@ -578,6 +593,48 @@ export default class AddShop extends Vue {
 }
 </style>
 <style lang="scss" scoped>
+.dish-copies-input {
+  width: 88px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid #d8dde3;
+  border-radius: 4px;
+  color: #333;
+  text-align: center;
+  box-sizing: border-box;
+
+  &:focus {
+    border-color: var(--admin-primary);
+    outline: none;
+  }
+}
+
+.setmeal-image-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #748078;
+  font-size: 13px;
+
+  img,
+  .setmeal-image-placeholder {
+    width: 96px;
+    height: 96px;
+    border: 1px solid #dfe5df;
+    border-radius: 4px;
+    object-fit: cover;
+  }
+
+  .setmeal-image-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+    box-sizing: border-box;
+    text-align: center;
+  }
+}
+
 .addBrand {
   &-container {
     margin: 30px;
@@ -602,7 +659,7 @@ export default class AddShop extends Vue {
         width: 777px;
 
         .addBut {
-          background: #ffc200;
+          background: var(--admin-primary);
           display: inline-block;
           padding: 0px 20px;
           border-radius: 3px;

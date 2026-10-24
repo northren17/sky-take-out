@@ -1,6 +1,7 @@
 import asyncio
 import unittest
 from collections import deque
+from unittest.mock import patch
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
@@ -8,11 +9,37 @@ from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.tools import tool
 
 from agent.llm_agent import (
-    DeepSeekVoiceAgent,
+    QwenVoiceAgent,
     IncompleteToolHistoryError,
     ToolExecutionTimeout,
     validate_tool_history,
 )
+from agent.config import (
+    DASHSCOPE_COMPATIBLE_BASE_URL,
+    QWEN_MAX_TOKENS,
+    QWEN_MODEL,
+)
+
+
+class ModelConfigurationTests(unittest.TestCase):
+    def test_agent_uses_qwen_with_dashscope_compatible_api(self):
+        with (
+            patch("agent.llm_agent.init_chat_model") as init_chat_model,
+            patch("agent.llm_agent.create_agent", return_value=object()),
+        ):
+            QwenVoiceAgent(api_key="test-key", tools=[])
+
+        init_chat_model.assert_called_once_with(
+            model=QWEN_MODEL,
+            model_provider="openai",
+            temperature=1.1,
+            api_key="test-key",
+            base_url=DASHSCOPE_COMPATIBLE_BASE_URL,
+            max_tokens=QWEN_MAX_TOKENS,
+            streaming=True,
+            max_retries=2,
+            extra_body={"enable_thinking": False},
+        )
 
 
 class FakeToolCallingModel(BaseChatModel):
@@ -49,7 +76,7 @@ class FakeToolCallingModel(BaseChatModel):
 class AgentHistoryTests(unittest.IsolatedAsyncioTestCase):
     def test_default_tool_fallback_is_disabled_without_session_scoped_tools(self):
         with self.assertRaisesRegex(ValueError, "session-bound tools"):
-            DeepSeekVoiceAgent(model=object())
+            QwenVoiceAgent(model=object())
 
     async def collect(self, agent, text):
         return "".join([chunk async for chunk in agent.stream(text)])
@@ -71,7 +98,7 @@ class AgentHistoryTests(unittest.IsolatedAsyncioTestCase):
                 AIMessage(content="complete"),
             ]
         )
-        agent = DeepSeekVoiceAgent(model=model, tools=[fake_tool])
+        agent = QwenVoiceAgent(model=model, tools=[fake_tool])
         self.assertEqual(await self.collect(agent, "question"), "complete")
         self.assertEqual(
             [type(message).__name__ for message in agent.history],
@@ -104,7 +131,7 @@ class AgentHistoryTests(unittest.IsolatedAsyncioTestCase):
                 AIMessage(content="new answer"),
             ]
         )
-        agent = DeepSeekVoiceAgent(model=model, tools=[fake_slow_tool])
+        agent = QwenVoiceAgent(model=model, tools=[fake_slow_tool])
         task = asyncio.create_task(self.collect(agent, "old question"))
         await asyncio.wait_for(started.wait(), 1)
         task.cancel()
@@ -147,7 +174,7 @@ class AgentHistoryTests(unittest.IsolatedAsyncioTestCase):
                 ),
             ]
         )
-        agent = DeepSeekVoiceAgent(model=model, tools=[fake_fast_tool])
+        agent = QwenVoiceAgent(model=model, tools=[fake_fast_tool])
         task = asyncio.create_task(self.collect(agent, "cancel after tool"))
         await asyncio.wait_for(second_model_started.wait(), 1)
         task.cancel()
@@ -176,7 +203,7 @@ class AgentHistoryTests(unittest.IsolatedAsyncioTestCase):
                 )
             ]
         )
-        agent = DeepSeekVoiceAgent(
+        agent = QwenVoiceAgent(
             model=model,
             tools=[fake_timeout_tool],
             tool_timeout_seconds=0.02,

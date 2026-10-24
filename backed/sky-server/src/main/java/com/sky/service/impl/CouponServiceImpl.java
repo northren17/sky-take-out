@@ -191,7 +191,9 @@ public class CouponServiceImpl implements CouponService {
         synchronizedActivity.setStartTime(dto.getStartTime());
         synchronizedActivity.setEndTime(dto.getEndTime());
         synchronizedActivity.setPerUserLimit(dto.getPerUserLimit());
-        syncActivityAfterCommit(synchronizedActivity, current.getIssuedCount() == 0);
+        if (current.getStatus() != 0) {
+            syncActivityAfterCommit(synchronizedActivity, current.getIssuedCount() == 0);
+        }
         invalidateActivityAfterCommit(current.getId());
     }
 
@@ -211,6 +213,10 @@ public class CouponServiceImpl implements CouponService {
             if (template == null || template.getStatus() != 1) {
                 throw new CouponBusinessException("请先启用关联优惠券模板");
             }
+            if (activity.getStartTime() == null || activity.getEndTime() == null ||
+                    !activity.getEndTime().isAfter(activity.getStartTime())) {
+                throw new CouponBusinessException("请先设置有效的活动时间范围");
+            }
             if (activity.getStockRemaining() <= 0 || !activity.getEndTime().isAfter(now)) {
                 throw new CouponBusinessException("活动已结束或库存不足，不能开始");
             }
@@ -219,7 +225,7 @@ public class CouponServiceImpl implements CouponService {
             throw new CouponBusinessException("更新优惠券活动状态失败");
         }
         activity.setStatus(status);
-        if (pendingClaims == 0) syncActivityAfterCommit(activity, false);
+        if (pendingClaims == 0 && status != 0) syncActivityAfterCommit(activity, false);
         invalidateActivityAfterCommit(id);
     }
 
@@ -485,8 +491,8 @@ public class CouponServiceImpl implements CouponService {
         if (dto.getPerUserLimit() == null || dto.getPerUserLimit() < 1) {
             throw new CouponBusinessException("每人限领数量须大于0");
         }
-        if (dto.getStartTime() == null || dto.getEndTime() == null ||
-                !dto.getEndTime().isAfter(dto.getStartTime())) {
+        if ((dto.getStartTime() == null) != (dto.getEndTime() == null) ||
+                (dto.getStartTime() != null && !dto.getEndTime().isAfter(dto.getStartTime()))) {
             throw new CouponBusinessException("活动时间范围无效");
         }
     }

@@ -55,8 +55,9 @@ SQL 文件位于 `sky-server/src/main/resources/db/`。请先备份目标数据�
 3. [`migration-coupon-phase3.sql`](./sky-server/src/main/resources/db/migration-coupon-phase3.sql)：领取流水分页扫描索引。
 4. [`migration-coupon-phase4.sql`](./sky-server/src/main/resources/db/migration-coupon-phase4.sql)：Outbox 重试字段及索引。
 5. [`migration-coupon-phase6.sql`](./sky-server/src/main/resources/db/migration-coupon-phase6.sql)：兑换码及兑换幂等记录。
+6. [`migration-coupon-phase7.sql`](./sky-server/src/main/resources/db/migration-coupon-phase7.sql)：允许草稿活动暂不设置开始和结束时间；启用活动前仍必须补齐有效时间范围。
 
-这些脚本面向 MySQL 8+。phase1、phase2、phase6 使用 `CREATE TABLE IF NOT EXISTS`；phase3、phase4 检查 `information_schema` 后再添加索引或字段。重复执行不会重复创建对象，但 `IF NOT EXISTS` 不会修复已存在的错误表结构；部署前应核对目标库实际 schema。phase5 没有数据库迁移。所有金额列以元存储，使用 `DECIMAL(10,2)`；折扣率使用 `DECIMAL(6,4)`。唯一索引覆盖领取业务号、用户券与领取记录、兑换码及同码同用户兑换。
+这些脚本面向 MySQL 8+。phase1、phase2、phase6 使用 `CREATE TABLE IF NOT EXISTS`；phase3、phase4、phase7 检查 `information_schema` 后再添加索引或字段约束。重复执行不会重复创建对象，但 `IF NOT EXISTS` 不会修复已存在的错误表结构；部署前应核对目标库实际 schema。phase5 没有数据库迁移。所有金额列以元存储，使用 `DECIMAL(10,2)`；折扣率使用 `DECIMAL(6,4)`。唯一索引覆盖领取业务号、用户券与领取记录、兑换码及同码同用户兑换。
 
 迁移只新增优惠券相关表、字段和索引，不要求改写既有订单表字段。
 
@@ -90,6 +91,7 @@ SQL 文件位于 `sky-server/src/main/resources/db/`。请先备份目标数据�
 
 - 优惠券类型：`1=满减`、`2=折扣`、`3=无门槛`。模板包含门槛、优惠额/折扣率/最高优惠额、有效期和适用范围。金额用 `BigDecimal`，不使用 `double`。
 - 活动持久状态：`0=草稿`、`1=启用`、`2=暂停`；是否尚未开始或已结束由开始/结束时间与当前时间共同判定。后端领取逻辑始终校验状态、时间和库存。
+- 草稿可先保存名称、模板和库存而不设置活动时间；启用前必须补齐有效的开始、结束时间。部署时需执行 phase7 迁移，使活动时间列允许为空。
 - 用户券状态：`0=未使用`、`1=已锁定`、`2=已使用`、`3=已过期`。
 - 兑换码为 24 个随机字节的 Base64URL 无填充编码（32 字符），由 `SecureRandom` 生成，数据库唯一约束兜底；每次最多同步生成 500 个，单码可配置上限和过期时间。超大批量异步生成尚未实现。
 - 规则缓存仅缓存模板/活动静态规则，不缓存库存。Caffeine TTL 30 秒、Redis TTL 5 分钟；读缓存时检查 Redis 共享版本，修改规则在事务提交后推进版本。若提交后 Redis 失效操作失败，错误会记录并依赖 TTL/DB 回源恢复，实例间短时旧规则风险不能被描述为零。

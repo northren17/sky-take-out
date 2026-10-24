@@ -136,6 +136,9 @@ class VoiceSessionRedisIntegrationTest {
 
         assertThat(service.authorizeRead(sessionId, capability, "orders:read")).isEqualTo(userId);
         assertThat(service.authorizeRead(sessionId, capability, "coupons:read")).isEqualTo(userId);
+        assertThat(service.authorizeRead(sessionId, capability, "menu:read")).isEqualTo(userId);
+        assertThatThrownBy(() -> service.authorizeRead(sessionId, capability, "memory:read"))
+                .isInstanceOf(VoiceSessionException.class);
         assertThatThrownBy(() -> service.authorizeRead(sessionId, capability, "orders:write"))
                 .isInstanceOf(VoiceSessionException.class);
         assertThatThrownBy(() -> service.authorizeRead(

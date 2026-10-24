@@ -80,35 +80,28 @@
                          label="操作时间"
         />
         <el-table-column label="操作"
-                         width="200"
+                         width="236"
+                         fixed="right"
                          align="center"
+                         class-name="admin-table-action-column"
         >
           <template #default="scope">
-            <el-button type="text"
-                       size="small"
-                       class="blueBug"
-                       @click="editHandle(scope.row)"
-            >
-              修改
-            </el-button>
-            <el-button type="text"
-                       size="small"
-                       class="delBut"
-                       @click="deleteHandle(scope.row.id)"
-            >
-              删除
-            </el-button>
-            <el-button type="text"
-                       size="small"
-                       class="non"
-                       :class="{
-                         blueBug: scope.row.status == '0',
-                         delBut: scope.row.status != '0'
-                       }"
-                       @click="statusHandle(scope.row)"
-            >
-              {{ scope.row.status == '1' ? '禁用' : '启用' }}
-            </el-button>
+            <div class="admin-table-actions">
+              <el-button type="primary" plain size="small" @click="editHandle(scope.row)">
+                修改
+              </el-button>
+              <el-button type="danger" plain size="small" @click="deleteHandle(scope.row.id)">
+                删除
+              </el-button>
+              <el-button
+                :type="scope.row.status == '1' ? 'warning' : 'success'"
+                plain
+                size="small"
+                @click="statusHandle(scope.row)"
+              >
+                {{ scope.row.status == '1' ? '禁用' : '启用' }}
+              </el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -489,7 +482,7 @@ export default class Category extends Vue {
 <style lang='scss'>
 // .customClass {
 //   .el-button--primary {
-//     background-color: #ffc200 !important ;
+//     background-color: #147d69 !important ;
 //   }
 // }
 </style>

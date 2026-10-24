@@ -4,6 +4,7 @@ import com.sky.constant.StatusConstant;
 import com.sky.entity.Setmeal;
 import com.sky.result.Result;
 import com.sky.service.SetmealService;
+import com.sky.service.SetmealStockService;
 import com.sky.vo.DishItemVO;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Operation;
@@ -26,6 +27,8 @@ public class SetmealController {
     @Autowired
     private SetmealService setmealService;
     @Autowired
+    private SetmealStockService setmealStockService;
+    @Autowired
     private RedisTemplate redisTemplate;
 
     /**
@@ -44,6 +47,7 @@ public class SetmealController {
         List<Setmeal> list = (List<Setmeal>) redisTemplate.opsForValue().get(key);
         if (list != null) {
             log.info("Redis 命中套餐缓存: {}", key);
+            list.forEach(item -> item.setStock(setmealStockService.getStock(item)));
             return Result.success(list);
         }
 
@@ -75,6 +79,7 @@ public class SetmealController {
             redisTemplate.delete(lockKey);
         }
 
+        if (list != null) list.forEach(item -> item.setStock(setmealStockService.getStock(item)));
         return Result.success(list);
     }
 

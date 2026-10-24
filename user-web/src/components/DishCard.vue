@@ -1,6 +1,15 @@
 <template>
-  <article class="dish-card">
-    <button class="dish-thumb" type="button" :aria-label="`查看${name}详情`" @click="emit('open-detail')">
+  <article
+    class="dish-card"
+    :class="{ 'is-shared-transition-source': sharedTransition }"
+    :style="{ viewTransitionName: sharedTransition ? 'dish-detail-shared' : undefined }"
+  >
+    <button
+      class="dish-thumb"
+      type="button"
+      :aria-label="`查看${name}详情`"
+      @click="emit('open-detail')"
+    >
       <img v-if="image" v-image-fallback :src="image" :alt="name" class="dish-img" loading="lazy" />
       <div v-else class="dish-thumb-fallback">{{ name.slice(0, 2) }}</div>
     </button>
@@ -91,6 +100,8 @@ const props = withDefaults(
     disabled?: boolean
     /** 购物车请求状态 */
     loading?: boolean
+    /** 当前卡片是否为共享元素转场的来源 */
+    sharedTransition?: boolean
   }>(),
   {
     name: '',
@@ -103,6 +114,7 @@ const props = withDefaults(
     category: '',
     disabled: false,
     loading: false,
+    sharedTransition: false,
   },
 )
 
@@ -132,6 +144,41 @@ const label = computed(() => props.description || props.name)
 .dish-card:hover {
   box-shadow: var(--sky-shadow);
   transform: translateY(-2px);
+}
+
+.dish-card.dish-enter {
+  animation: dish-card-enter 480ms cubic-bezier(0.2, 1.15, 0.35, 1) backwards;
+  animation-delay: var(--dish-enter-delay, 0ms);
+}
+
+.dish-card.is-shared-transition-source,
+.dish-card.is-shared-transition-source:hover {
+  box-shadow: none;
+  transform: none;
+  transition: none;
+}
+
+.dish-card.is-shared-transition-source .dish-img,
+.dish-card.is-shared-transition-source:hover .dish-img {
+  transform: none;
+  transition: none;
+}
+
+@keyframes dish-card-enter {
+  from {
+    opacity: 0.78;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dish-card.dish-enter {
+    animation: none;
+  }
 }
 
 /* 图片区 */
@@ -294,7 +341,7 @@ const label = computed(() => props.description || props.name)
   font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
-  transition: background 0.25s var(--sky-ease), transform 0.25s var(--sky-ease);
+  transition: background 0.25s var(--sky-ease), transform 300ms var(--sky-press-release);
 }
 
 .dish-btn:hover {
@@ -315,6 +362,8 @@ const label = computed(() => props.description || props.name)
 
 .dish-btn:active {
   transform: scale(0.96);
+  transition-duration: 90ms;
+  transition-timing-function: cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 
 /* 加减器 */
@@ -337,11 +386,13 @@ const label = computed(() => props.description || props.name)
   font-weight: 500;
   line-height: 1;
   cursor: pointer;
-  transition: background 0.25s var(--sky-ease), transform 0.25s var(--sky-ease);
+  transition: background 0.25s var(--sky-ease), transform 300ms var(--sky-press-release);
 }
 
 .stepper-btn:active {
-  transform: scale(0.92);
+  transform: scale(0.96);
+  transition-duration: 90ms;
+  transition-timing-function: cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 
 .stepper-btn.plus {

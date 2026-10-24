@@ -1,0 +1,20 @@
+services:
+  sky-server:
+    mem_limit: 640m
+    environment:
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=45 -XX:InitialRAMPercentage=10
+
+  mysql:
+    mem_limit: 448m
+
+  redis:
+    mem_limit: 96m
+
+  rabbitmq:
+    mem_limit: 192m
+
+  web:
+    mem_limit: 96m
+    build:
+      args:
+        VITE_ENABLE_VOICE_ASSISTANT: "false"

@@ -42,4 +42,4 @@ CREATE TABLE IF NOT EXISTS `order_refund_record` (
     UNIQUE KEY `uk_order_refund_out_refund_no` (`out_refund_no`),
     UNIQUE KEY `uk_order_refund_order_id` (`order_id`),
     KEY `idx_order_refund_status_time` (`status`, `update_time`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Idempotent full-order refund tracking';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Idempotent order refund event tracking';

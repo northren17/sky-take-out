@@ -108,6 +108,14 @@
             <span>￥{{ ((scope.row.price ).toFixed(2) * 100) / 100 }}</span>
           </template>
         </el-table-column>
+        <el-table-column prop="stock"
+                         label="库存"
+                         width="90"
+        >
+          <template #default="{ row }">
+            {{ Number(row.stock) < 0 ? '不限' : row.stock }}
+          </template>
+        </el-table-column>
         <el-table-column label="售卖状态"
                          width="100"
         >
@@ -128,35 +136,28 @@
           </template> -->
         </el-table-column>
         <el-table-column label="操作"
-                         width="210"
+                         width="236"
+                         fixed="right"
                          align="center"
+                         class-name="admin-table-action-column"
         >
           <template #default="scope">
-            <el-button type="text"
-                       size="small"
-                       class="blueBug"
-                       @click="addSetMeal(scope.row)"
-            >
-              修改
-            </el-button>
-            <el-button type="text"
-                       size="small"
-                       class="delBut"
-                       @click="deleteHandle('单删', scope.row.id)"
-            >
-              删除
-            </el-button>
-            <el-button type="text"
-                       size="small"
-                       class="blueBug non"
-                       :class="{
-                         blueBug: scope.row.status == '0',
-                         delBut: scope.row.status != '0'
-                       }"
-                       @click="statusHandle(scope.row)"
-            >
-              {{ scope.row.status == '0' ? '启售' : '停售' }}
-            </el-button>
+            <div class="admin-table-actions">
+              <el-button type="primary" plain size="small" @click="addSetMeal(scope.row)">
+                修改
+              </el-button>
+              <el-button type="danger" plain size="small" @click="deleteHandle('单删', scope.row.id)">
+                删除
+              </el-button>
+              <el-button
+                :type="scope.row.status == '0' ? 'success' : 'warning'"
+                plain
+                size="small"
+                @click="statusHandle(scope.row)"
+              >
+                {{ scope.row.status == '0' ? '启售' : '停售' }}
+              </el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>

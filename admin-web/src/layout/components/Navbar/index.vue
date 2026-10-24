@@ -580,7 +580,7 @@ export default class Navbar extends Vue {
     }
     .el-radio-group {
       & > .is-checked {
-        border: 1px solid #ffc200;
+        border: 1px solid var(--admin-primary);
       }
     }
     .el-radio {

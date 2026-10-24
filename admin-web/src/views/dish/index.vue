@@ -124,35 +124,35 @@
                          width="168"
         />
         <el-table-column label="操作"
-                         width="210"
+                         width="236"
+                         fixed="right"
                          align="center"
+                         class-name="admin-table-action-column"
         >
           <template #default="scope">
-            <el-button type="text"
-                       size="small"
-                       class="blueBug"
-                       @click="addDishtype(scope.row.id)"
-            >
-              修改
-            </el-button>
-            <el-button type="text"
-                       size="small"
-                       class="delBut"
-                       @click="deleteHandle('单删', scope.row.id)"
-            >
-              删除
-            </el-button>
-            <el-button type="text"
-                       size="small"
-                       class="non"
-                       :class="{
-                         blueBug: scope.row.status == '0',
-                         delBut: scope.row.status != '0'
-                       }"
-                       @click="statusHandle(scope.row)"
-            >
-              {{ scope.row.status == '0' ? '启售' : '停售' }}
-            </el-button>
+            <div class="admin-table-actions">
+              <el-button type="primary"
+                         plain
+                         size="small"
+                         @click="addDishtype(scope.row.id)"
+              >
+                修改
+              </el-button>
+              <el-button type="danger"
+                         plain
+                         size="small"
+                         @click="deleteHandle('单删', scope.row.id)"
+              >
+                删除
+              </el-button>
+              <el-button :type="scope.row.status == '0' ? 'success' : 'warning'"
+                         plain
+                         size="small"
+                         @click="statusHandle(scope.row)"
+              >
+                {{ scope.row.status == '0' ? '启售' : '停售' }}
+              </el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>

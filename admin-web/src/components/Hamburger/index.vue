@@ -1,7 +1,14 @@
 <template>
-  <div :class="[{'is-active': isActive}]" @click="toggleClick">
+  <button
+    class="hamburger-toggle"
+    :class="{ 'is-active': isActive }"
+    type="button"
+    :aria-label="isActive ? '收起侧边栏' : '展开侧边栏'"
+    :aria-expanded="isActive"
+    @click="toggleClick"
+  >
     <svg-icon name="hamburger" width="20" height="20" />
-  </div>
+  </button>
 </template>
 
 <script lang="ts">
@@ -21,6 +28,21 @@ export default class Hamburger extends Vue {
 </script>
 
 <style lang="scss" scoped>
+.hamburger-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.hamburger-toggle:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
 .svg-icon {
   vertical-align: middle;
 }

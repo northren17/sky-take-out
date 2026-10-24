@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "苍穹外卖用户端（点餐 H5）网页版 —— Vue3 + TypeScript + Vite + Element Plus + Pinia + Vue Router",
+  "description": "智享云膳用户端（点餐 H5）网页版 —— Vue3 + TypeScript + Vite + Element Plus + Pinia + Vue Router",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit -p tsconfig.app.json && vite build",

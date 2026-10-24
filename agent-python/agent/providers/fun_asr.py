@@ -16,6 +16,7 @@ from dataclasses import dataclass
 
 import dashscope
 from dashscope.audio.asr import Recognition, RecognitionCallback, RecognitionResult
+from dashscope.common.error import InvalidParameter
 
 from agent.events import ProviderError, TranscriptEvent
 
@@ -210,8 +211,12 @@ class FunAsrStream:
             raise RuntimeError("Fun-ASR stream has not started")
         old_recognition = self._recognition
         self._input_generation += 1
-        await asyncio.to_thread(old_recognition.stop)
         self._started = False
+        try:
+            await asyncio.to_thread(old_recognition.stop)
+        except InvalidParameter:
+            # A provider timeout may stop the SDK connection before recovery runs.
+            pass
         self._callback, self._recognition = self._new_recognition()
         try:
             await asyncio.to_thread(self._recognition.start)
@@ -251,4 +256,8 @@ class FunAsrStream:
             return
         self._input_generation += 1
         self._started = False
-        await asyncio.to_thread(self._recognition.stop)
+        try:
+            await asyncio.to_thread(self._recognition.stop)
+        except InvalidParameter:
+            # DashScope may already stop the recognition after reporting a provider error.
+            pass

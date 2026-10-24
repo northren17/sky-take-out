@@ -7,6 +7,7 @@ import com.sky.entity.Category;
 import com.sky.entity.Dish;
 import com.sky.enumeration.OperationType;
 import com.sky.vo.DishVO;
+import com.sky.vo.AgentDishRecommendationItemVO;
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Select;
@@ -76,4 +77,15 @@ public interface DishMapper {
             + "and exists (select 1 from dish d where d.category_id = c.id and d.status = 1) "
             + "order by c.sort asc, c.create_time desc")
     List<Category> listAvailableCategory();
+
+    @Select("select d.name, '菜品' as type, c.name as categoryName, " +
+            "coalesce(d.description, '') as description, d.price, " +
+            "coalesce(f.flavor_text, '') as flavorText " +
+            "from dish d join category c on c.id = d.category_id " +
+            "left join (select dish_id, " +
+            "group_concat(concat(name, ':', value) separator ' ') as flavor_text " +
+            "from dish_flavor group by dish_id) f on f.dish_id = d.id " +
+            "where d.status = 1 and c.status = 1 and c.type = 1 " +
+            "order by c.sort, d.update_time desc limit 200")
+    List<AgentDishRecommendationItemVO> listAvailableRecommendations();
 }

@@ -8,11 +8,10 @@
       <el-form ref="ruleForm"
                :model="ruleForm"
                :rules="rules"
-               :inline="true"
-               label-width="180px"
-               class="demo-ruleForm"
+               label-width="160px"
+               class="demo-ruleForm dish-form"
       >
-        <div>
+        <div class="form-grid form-grid--two">
           <el-form-item label="菜品名称:"
                         prop="name"
           >
@@ -35,7 +34,7 @@
             </el-select>
           </el-form-item>
         </div>
-        <div>
+        <div class="form-grid">
           <el-form-item label="菜品价格:"
                         prop="price"
           >
@@ -44,87 +43,78 @@
             />
           </el-form-item>
         </div>
-        <el-form-item label="口味做法配置:">
-          <el-form-item>
-            <div class="flavorBox">
-              <span v-if="dishFlavors.length == 0"
-                    class="addBut"
-                    @click="addFlavore"
+        <el-form-item label="口味做法配置:"
+                      class="flavor-form-item"
+        >
+          <div class="flavorBox">
+            <div v-if="dishFlavors.length" class="flavor-list">
+              <div v-for="(item, index) in dishFlavors"
+                   :key="index"
+                   class="flavor-row"
               >
-                + 添加口味</span>
-              <div v-if="dishFlavors.length != 0"
-                   class="flavor"
-              >
-                <div class="title">
-                  <span>口味名（3个字内）</span>
-                  <!-- <span class="des-box">口味标签（输入标签回车添加）</span> -->
-                </div>
-                <div class="cont">
-                  <div v-for="(item, index) in dishFlavors"
-                       :key="index"
-                       class="items"
+                <el-input
+                  v-model="item.name"
+                  class="flavor-name-input"
+                  placeholder="口味名称"
+                  maxlength="20"
+                  clearable
+                />
+                <div class="flavor-options">
+                  <el-tag
+                    v-for="(option, optionIndex) in item.value"
+                    :key="`${option}-${optionIndex}`"
+                    closable
+                    type="success"
+                    @close="delFlavorLabel(index, optionIndex)"
                   >
-                    <div class="itTit">
-                      <!-- :dish-flavors-data="filterDishFlavorsData()" -->
-                      <SelectInput :dish-flavors-data="leftDishFlavors"
-                                   :index="index"
-                                   :value="item.name"
-                                   @select="selectHandle"
-                      />
-                    </div>
-                    <div class="labItems"
-                         style="display: flex"
-                    >
-                      <span v-for="(it, ind) in item.value"
-                            :key="ind"
-                      >{{ it }}
-                        <i @click="delFlavorLabel(index, ind)">X</i></span>
-                      <div class="inputBox"
-                           :style="inputStyle"
-                      />
-                    </div>
-                    <span class="delFlavor delBut non"
-                          @click="delFlavor(item.name)"
-                    >删除</span>
-                  </div>
+                    {{ option }}
+                  </el-tag>
+                  <el-input
+                    v-model="item.inputValue"
+                    class="flavor-option-input"
+                    placeholder="输入选项后按 Enter 添加"
+                    maxlength="30"
+                    @keyup.enter.stop="addFlavorLabel(index, item)"
+                  />
                 </div>
-                <div v-if="
-                       !!this.leftDishFlavors.length &&
-                         this.dishFlavors.length < this.dishFlavorsData.length
-                     "
-                     class="addBut"
-                     @click="addFlavore"
+                <el-button
+                  type="danger"
+                  plain
+                  class="delete-flavor-button"
+                  @click="delFlavor(index)"
                 >
-                  添加口味
-                </div>
+                  删除
+                </el-button>
               </div>
             </div>
-          </el-form-item>
+            <el-button type="primary" plain @click="addFlavore">
+              + 添加口味
+            </el-button>
+            <p class="flavor-hint">口味名称和可选项均可自定义；在选项输入框中按 Enter 添加。</p>
+          </div>
         </el-form-item>
-        <div>
-          <el-form-item label="菜品图片:"
-                        prop="image"
+        <el-form-item label="菜品图片:"
+                      prop="image"
+                      class="image-form-item"
+        >
+          <image-upload :prop-image-url="imageUrl"
+                        @imageChange="imageChange"
           >
-            <image-upload :prop-image-url="imageUrl"
-                          @imageChange="imageChange"
-            >
-              图片大小不超过2M<br>仅能上传 PNG JPEG JPG类型图片<br>建议上传200*200或300*300尺寸的图片
-            </image-upload>
-          </el-form-item>
-        </div>
-        <div class="address">
-          <el-form-item label="菜品描述:"
-                        prop="region"
-          >
-            <el-input v-model="ruleForm.description"
-                      type="textarea"
-                      :rows="3"
-                      maxlength="200"
-                      placeholder="菜品描述，最长200字"
-            />
-          </el-form-item>
-        </div>
-        <div class="subBox address">
+            图片大小不超过2M<br>仅能上传 PNG JPEG JPG类型图片<br>建议上传200*200或300*300尺寸的图片
+          </image-upload>
+        </el-form-item>
+        <el-form-item label="菜品描述:"
+                      prop="description"
+                      class="description-form-item"
+        >
+          <el-input v-model="ruleForm.description"
+                    type="textarea"
+                    :rows="3"
+                    maxlength="200"
+                    placeholder="菜品描述，最长200字"
+          />
+        </el-form-item>
+        <div class="subBox">
           <el-button @click="() => $router.back()">
             取消
           </el-button>
@@ -147,9 +137,8 @@
 </template>
 
 <script lang="ts">
-import { Component, Vue, Watch } from 'vue-facing-decorator'
+import { Component, Vue } from 'vue-facing-decorator'
 import HeadLable from '@/components/HeadLable/index.vue'
-import SelectInput from './components/SelectInput.vue'
 import ImageUpload from '@/components/ImgUpload/index.vue'
 // getFlavorList口味列表暂时不做 getDishTypeList
 import {
@@ -165,7 +154,6 @@ import { getToken } from '@/utils/cookies'
   name: 'addShop',
   components: {
     HeadLable,
-    SelectInput,
     ImageUpload
   }
 })
@@ -176,12 +164,8 @@ export default class AddShop extends Vue {
   private imageUrl: string = ''
   private actionType: string = ''
   private dishList: string[] = []
-  private dishFlavorsData: any[] = [] //原始口味数据
   private dishFlavors: any[] = [] //待上传口味的数据
-  private leftDishFlavors: any[] = [] //下拉框剩余可选择的口味数据
   private vueRest = '1'
-  private index = 0
-  private inputStyle = { flex: 1 }
   private headers = {
     token: getToken()
   }
@@ -202,7 +186,7 @@ export default class AddShop extends Vue {
       name: [
         {
           required: true,
-          validator: (rule: any, value: string, callback: Function) => {
+          validator: (rule: any, value: string, callback: (error?: Error) => void) => {
             if (!value) {
               callback(new Error('请输入菜品名称'))
             } else {
@@ -228,7 +212,7 @@ export default class AddShop extends Vue {
         {
           required: true,
           // 'message': '请填写菜品价格',
-          validator: (rules: any, value: string, callback: Function) => {
+          validator: (rules: any, value: string, callback: (error?: Error) => void) => {
             const reg = /^([1-9]\d{0,5}|0)(\.\d{1,2})?$/
             if (!reg.test(value) || Number(value) <= 0) {
               callback(
@@ -249,8 +233,6 @@ export default class AddShop extends Vue {
 
   created() {
     this.getDishList()
-    // 口味临时数据
-    this.getFlavorListHand()
     this.actionType = this.$route.query.id ? 'edit' : 'add'
     if (this.$route.query.id) {
       this.init()
@@ -258,30 +240,6 @@ export default class AddShop extends Vue {
   }
 
   mounted() {}
-  @Watch('dishFlavors')
-  changeDishFlavors() {
-    this.getLeftDishFlavors()
-  }
-
-  //过滤已选择的口味下拉框无法再次选择
-  getLeftDishFlavors() {
-    let arr = []
-    this.dishFlavorsData.map(item => {
-      if (
-        this.dishFlavors.findIndex(item1 => item.name === item1.name) === -1
-      ) {
-        arr.push(item)
-      }
-    })
-    this.leftDishFlavors = arr
-  }
-
-  private selectHandle(val: any, key: any, ind: any) {
-    const arrDate = [...this.dishFlavors]
-    const index = this.dishFlavorsData.findIndex(item => item.name === val)
-    arrDate[key] = JSON.parse(JSON.stringify(this.dishFlavorsData[index]))
-    this.dishFlavors = arrDate
-  }
 
   private async init() {
     queryDishById(this.$route.query.id).then(res => {
@@ -289,14 +247,11 @@ export default class AddShop extends Vue {
         this.ruleForm = { ...res.data.data }
         this.ruleForm.price = String(res.data.data.price)
         this.ruleForm.status = res.data.data.status == '1'
-        this.dishFlavors =
-          res.data.data.flavors &&
-          res.data.data.flavors.map(obj => ({
+        this.dishFlavors = (res.data.data.flavors ?? []).map(obj => ({
             ...obj,
-            value: JSON.parse(obj.value)
+            value: JSON.parse(obj.value),
+            inputValue: ''
           }))
-        let arr = []
-        this.getLeftDishFlavors()
         this.imageUrl = res.data.data.image
       } else {
         this.$message.error(res.data.msg)
@@ -306,13 +261,12 @@ export default class AddShop extends Vue {
 
   // 按钮 - 添加口味
   private addFlavore() {
-    this.dishFlavors.push({ name: '', value: [] }) // JSON.parse(JSON.stringify(this.dishFlavorsData))
+    this.dishFlavors.push({ name: '', value: [], inputValue: '' })
   }
 
   // 按钮 - 删除口味
-  private delFlavor(name: string) {
-    let ind = this.dishFlavors.findIndex(item => item.name === name)
-    this.dishFlavors.splice(ind, 1)
+  private delFlavor(index: number) {
+    this.dishFlavors.splice(index, 1)
   }
 
   // 按钮 - 删除口味标签
@@ -320,23 +274,12 @@ export default class AddShop extends Vue {
     this.dishFlavors[index].value.splice(ind, 1)
   }
 
-  //口味位置记录
-  private flavorPosition(index: number) {
-    this.index = index
-  }
-
-  // 添加口味标签
-  private keyDownHandle(val: any) {
-    if (event) {
-      event.cancelBubble = true
-      event.preventDefault()
-      event.stopPropagation()
-    }
-
-    if (val.target.innerText.trim() != '') {
-      this.dishFlavors[this.index].flavorData.push(val.target.innerText)
-      val.target.innerText = ''
-    }
+  private addFlavorLabel(index: number, item: any) {
+    const value = String(item.inputValue || '').trim()
+    if (!value) return
+    if (!Array.isArray(item.value)) item.value = []
+    if (!item.value.includes(value)) item.value.push(value)
+    item.inputValue = ''
   }
 
   // 获取菜品分类
@@ -356,17 +299,6 @@ export default class AddShop extends Vue {
     })
   }
 
-  // 获取口味列表
-  private getFlavorListHand() {
-    // flavor flavorData
-    this.dishFlavorsData = [
-      { name: '甜味', value: ['无糖', '少糖', '半糖', '多糖', '全糖'] },
-      { name: '温度', value: ['热饮', '常温', '去冰', '少冰', '多冰'] },
-      { name: '忌口', value: ['不要葱', '不要蒜', '不要香菜', '不要辣'] },
-      { name: '辣度', value: ['不辣', '微辣', '中辣', '重辣'] }
-    ]
-  }
-
   private submitForm(formName: any, st: any) {
     (this.$refs[formName] as any).validate((valid: any) => {
       console.log(valid, 'valid')
@@ -379,7 +311,7 @@ export default class AddShop extends Vue {
         // params.price *= 100
         params.categoryId = this.ruleForm.categoryId
         params.flavors = this.dishFlavors.map(obj => ({
-          ...obj,
+          name: obj.name,
           value: JSON.stringify(obj.value)
         }))
         delete params.dishFlavors
@@ -450,137 +382,218 @@ export default class AddShop extends Vue {
 </script>
 <style lang="scss" scoped>
 .addBrand-container {
-  .el-form--inline .el-form-item__content {
-    width: 293px;
-  }
+  margin: 24px;
 
-  .el-input {
-    width: 350px;
-  }
-
-  .address {
-    .el-form-item__content {
-      width: 777px !important;
-    }
+  .container {
+    max-width: 1180px;
+    padding: 32px;
+    border: 1px solid #edf0ed;
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: 0 8px 24px rgb(25 38 30 / 5%);
   }
 }
-</style>
-<style lang="scss" scoped>
-.addBrand {
-  &-container {
-    margin: 30px;
+.dish-form {
+  max-width: 1060px;
 
-    .container {
-      position: relative;
-      z-index: 1;
-      background: #fff;
-      padding: 30px;
-      border-radius: 4px;
-      min-height: 500px;
+  :deep(.el-form-item) {
+    margin-bottom: 22px;
+  }
 
-      .subBox {
-        padding-top: 30px;
-        text-align: center;
-        border-top: solid 1px $gray-5;
-      }
-      .upload-item {
-        .el-form-item__error {
-          top: 90%;
-        }
-      }
-    }
+  :deep(.el-form-item__label) {
+    color: #45534a;
+    font-weight: 600;
+    line-height: 40px;
+  }
+
+  :deep(.el-form-item__content) {
+    min-width: 0;
+    line-height: 40px;
+  }
+
+  :deep(.el-input),
+  :deep(.el-select) {
+    width: 100%;
+    max-width: 420px;
+  }
+
+  .form-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 28px;
+  }
+
+  .form-grid--two :deep(.el-form-item) {
+    min-width: 0;
+  }
+
+  .flavor-form-item,
+  .image-form-item,
+  .description-form-item {
+    width: 100%;
+  }
+
+  .flavor-form-item :deep(.el-form-item__content),
+  .description-form-item :deep(.el-form-item__content) {
+    width: min(100%, 820px);
+  }
+
+  .image-form-item :deep(.el-form-item__content) {
+    width: min(100%, 820px);
+  }
+
+  .description-form-item :deep(.el-textarea) {
+    width: 100%;
+    max-width: 820px;
+  }
+
+  .image-form-item :deep(.upload-item) {
+    display: grid;
+    grid-template-columns: 160px minmax(0, 1fr);
+    align-items: center;
+    column-gap: 12px;
+    width: min(100%, 540px);
+  }
+
+  .image-form-item :deep(.avatar-uploader),
+  .image-form-item :deep(.avatar-uploader .el-upload) {
+    width: 160px;
+    height: 120px;
+    box-sizing: border-box;
+  }
+
+  .image-form-item :deep(.avatar-uploader .el-upload) {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border: 1px dashed #cbd5ce;
+    border-radius: 8px;
+    background: #f8faf8;
+  }
+
+  .image-form-item :deep(.avatar-uploader .avatar-uploader-icon::after) {
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  .image-form-item :deep(.avatar-uploader-icon),
+  .image-form-item :deep(.avatar) {
+    width: 160px;
+    height: 120px;
+  }
+
+  .image-form-item :deep(.avatar-uploader-icon) {
+    line-height: 120px;
+  }
+
+  .image-form-item :deep(.upload-tips) {
+    min-width: 0;
+    margin: 0;
+    color: #737e76;
+    line-height: 1.8;
+  }
+
+  .subBox {
+    display: flex;
+    justify-content: flex-start;
+    gap: 12px;
+    margin-left: 160px;
+    padding-top: 24px;
+    border-top: 1px solid #edf0ed;
   }
 }
 
 .flavorBox {
-  width: 777px;
+  width: 100%;
 
-  .addBut {
-    background: #ffc200;
-    display: inline-block;
-    padding: 0px 20px;
-    border-radius: 3px;
-    line-height: 40px;
-    cursor: pointer;
-    border-radius: 4px;
-    color: #333333;
-    font-weight: 500;
+  .flavor-list {
+    display: grid;
+    gap: 12px;
+    margin-bottom: 14px;
   }
 
-  .flavor {
-    border: solid 1px #dfe2e8;
-    border-radius: 3px;
-    padding: 15px;
-    background: #fafafb;
+  .flavor-row {
+    display: grid;
+    grid-template-columns: minmax(140px, 190px) minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 12px;
+    padding: 14px;
+    border: 1px solid #e7ece8;
+    border-radius: 8px;
+    background: #f8faf8;
+  }
 
-    .title {
-      color: #606168;
-      .des-box {
-        padding-left: 44px;
-      }
+  .flavor-name-input,
+  .flavor-options,
+  .flavor-option-input {
+    width: 100%;
+    max-width: none;
+  }
+
+  .flavor-options {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-height: 40px;
+    padding: 5px 8px;
+    border: 1px solid #dfe4df;
+    border-radius: 6px;
+    background: #fff;
+  }
+
+  .flavor-option-input {
+    flex: 1 1 180px;
+    min-width: 150px;
+  }
+
+  .flavor-option-input :deep(.el-input__wrapper) {
+    box-shadow: none;
+  }
+
+  .delete-flavor-button {
+    min-height: 40px;
+  }
+
+  .flavor-hint {
+    margin: 8px 0 0;
+    color: #8a918c;
+    font-size: 12px;
+    line-height: 1.6;
+  }
+}
+
+@media (max-width: 900px) {
+  .addBrand-container {
+    margin: 16px;
+
+    .container {
+      padding: 22px 16px;
+    }
+  }
+
+  .dish-form {
+    .form-grid {
+      grid-template-columns: minmax(0, 1fr);
     }
 
-    .cont {
-      .items {
-        display: flex;
-        margin: 10px 0;
-
-        .itTit {
-          width: 150px;
-          margin-right: 15px;
-
-          input {
-            width: 100%;
-            // line-height: 40px;
-            // border-radius: 3px;
-            // padding: 0 10px;
-          }
-        }
-
-        .labItems {
-          flex: 1;
-          display: flex;
-          flex-wrap: wrap;
-          border-radius: 3px;
-          min-height: 39px;
-          border: solid 1px #d8dde3;
-          background: #fff;
-          padding: 0 5px;
-
-          span {
-            display: inline-block;
-            color: #ffc200;
-            margin: 5px;
-            line-height: 26px;
-            padding: 0 10px;
-            background: #fffbf0;
-            border: 1px solid #fbe396;
-            border-radius: 4px;
-            font-size: 12px;
-
-            i {
-              cursor: pointer;
-              font-style: normal;
-            }
-          }
-
-          .inputBox {
-            display: inline-block;
-            width: 100%;
-            height: 36px;
-            line-height: 36px;
-            overflow: hidden;
-          }
-        }
-
-        .delFlavor {
-          display: inline-block;
-          padding: 0 10px;
-          color: #f19c59;
-          cursor: pointer;
-        }
-      }
+    .subBox {
+      margin-left: 0;
     }
+  }
+
+  .flavorBox .flavor-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .dish-form .image-form-item :deep(.upload-item) {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 10px;
   }
 }
 </style>

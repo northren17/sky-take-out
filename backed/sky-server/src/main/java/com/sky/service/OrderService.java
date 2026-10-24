@@ -31,6 +31,8 @@ public interface OrderService {
     void paySuccess(String outTradeNo);
     void refundNotification(String outRefundNo, String outTradeNo, BigDecimal refundAmount,
                             boolean success, String notificationBody);
+    void requestPartialRefund(OrderRefundDTO orderRefundDTO) throws Exception;
+    void releasePoints(Long orderId);
     void timeoutCancel(Long orderId);
     /**
      * 用户端订单分页查询

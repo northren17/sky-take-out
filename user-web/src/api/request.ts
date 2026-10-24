@@ -149,7 +149,7 @@ export function getImageUrl(image?: string | null): string {
 export const SHOP_PHONE = import.meta.env.VITE_SHOP_PHONE || '400-618-4000'
 
 /** 店铺显示名 */
-export const SHOP_NAME = import.meta.env.VITE_SHOP_NAME || '苍穹外卖'
+export const SHOP_NAME = import.meta.env.VITE_SHOP_NAME || '智享云膳'
 
 /** 配送费（原小程序多处硬编码为 6） */
 export const DELIVERY_FEE = 6
